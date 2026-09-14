@@ -1,0 +1,95 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# create directories
+
+dir.create("../xlsx/pop/estat", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../xlsx/pop/estat/dem", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+dir.create("../xlsx/pop/estat/prf", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+
+
+```{r}
+# files for dem (table 1, age, sex)
+
+# ""
+
+# "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000031495530&fileKind=0",
+#
+# "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000032153669&fileKind=4",
+
+
+url_dem <- c("https://www.e-stat.go.jp/stat-search/file-download?statInfId=000031495530&fileKind=0",
+             "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000032153669&fileKind=4")
+
+```
+
+```{r}
+file_dem <- url_dem %>% str_extract("(?<=statInfId\\=).+(?=\\&)")
+
+file_dem <- paste0(file_dem, ".xls")
+
+path_dem <- paste0("../xlsx/pop/estat/dem/", file_dem)
+```
+
+```{r}
+for (i in 1:length(url_dem)){
+  download.file(url_dem[i], path_dem[i], mode = "wb")
+  print(paste(file_dem[i], "downloaded"))
+}
+```
+
+
+# outpatient out prescription prefecture
+```{r}
+# files for prf (table 2, prefecture)
+
+# "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000031495550&fileKind=0"
+# "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000032153670&fileKind=4"
+#
+#
+
+
+url_prf <- c("https://www.e-stat.go.jp/stat-search/file-download?statInfId=000031495550&fileKind=0",
+                         "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000032153670&fileKind=4")
+```
+
+```{r}
+file_prf <- url_prf %>% str_extract("(?<=statInfId\\=).+(?=\\&)")
+
+file_prf <- paste0(file_prf, ".xls")
+
+path_prf <- paste0("../xlsx/pop/estat/prf/", file_prf)
+```
+
+```{r}
+for (i in 1:length(url_prf)){
+  download.file(url_prf[i], path_prf[i], mode = "wb")
+  print(paste(file_prf[i], "downloaded"))
+}
+```
+
+```{r}
+# for 2015 and 2020, download xlsx directly from the e-stats
+# place them in ../xlsx/
+```
+
+
+# check the downloaded files
+
+

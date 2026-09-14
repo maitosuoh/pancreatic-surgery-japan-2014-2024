@@ -1,0 +1,126 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# create directories
+
+dir.create("../xlsx/pop", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../xlsx/pop/stat", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../xlsx/pop/stat/dem", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+dir.create("../xlsx/pop/stat/prf", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+
+
+```{r}
+# files for dem (table 1, age, sex)
+
+#
+# "https://www.stat.go.jp/data/jinsui/2014np/zuhyou/05k26-1.xls",
+#
+# "https://www.stat.go.jp/data/jinsui/2016np/zuhyou/05k28-1.xls",
+#
+# "https://www.stat.go.jp/data/jinsui/2017np/zuhyou/05k29-1.xls",
+#
+# "https://www.stat.go.jp/data/jinsui/2018np/zuhyou/05k30-1.xls",
+#
+# "https://www.stat.go.jp/data/jinsui/2019np/zuhyou/05k01-1.xlsx",
+#
+# "https://www.stat.go.jp/data/jinsui/2021np/zuhyou/05k2021-1.xlsx",
+#
+# "https://www.stat.go.jp/data/jinsui/2022np/zuhyou/05k2022-1.xlsx",
+#
+# "https://www.stat.go.jp/data/jinsui/2023np/zuhyou/05k2023-1.xlsx"
+
+
+url_dem <- c("https://www.stat.go.jp/data/jinsui/2014np/zuhyou/05k26-1.xls",
+                         "https://www.stat.go.jp/data/jinsui/2016np/zuhyou/05k28-1.xls",
+                         "https://www.stat.go.jp/data/jinsui/2017np/zuhyou/05k29-1.xls",
+                         "https://www.stat.go.jp/data/jinsui/2018np/zuhyou/05k30-1.xls",
+                         "https://www.stat.go.jp/data/jinsui/2019np/zuhyou/05k01-1.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2021np/zuhyou/05k2021-1.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2022np/zuhyou/05k2022-1.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2023np/zuhyou/05k2023-1.xlsx",
+             "https://www.stat.go.jp/data/jinsui/2024np/zuhyou/05k2024-1.xlsx"
+             )
+
+```
+
+```{r}
+file_dem <- url_dem %>% str_extract("(?<=zuhyou\\/).+")
+
+path_dem <- paste0("../xlsx/pop/stat/dem/", file_dem)
+```
+
+```{r}
+for (i in 1:length(url_dem)){
+  download.file(url_dem[i], path_dem[i], mode = "wb")
+  print(paste(file_dem[i], "downloaded"))
+}
+```
+
+
+# outpatient out prescription prefecture
+```{r}
+# files for prf (table 2, prefecture)
+
+# "https://www.stat.go.jp/data/jinsui/2014np/zuhyou/05k26-2.xls",
+#
+# "https://www.stat.go.jp/data/jinsui/2016np/zuhyou/05k28-2.xls",
+# "https://www.stat.go.jp/data/jinsui/2017np/zuhyou/05k29-2.xls",
+# "https://www.stat.go.jp/data/jinsui/2018np/zuhyou/05k30-2.xls",
+# "https://www.stat.go.jp/data/jinsui/2019np/zuhyou/05k01-2.xlsx",
+
+# "https://www.stat.go.jp/data/jinsui/2021np/zuhyou/05k2021-2.xlsx",
+# "https://www.stat.go.jp/data/jinsui/2022np/zuhyou/05k2022-2.xlsx",
+# "https://www.stat.go.jp/data/jinsui/2023np/zuhyou/05k2023-2.xlsx"
+
+
+url_prf <- c("https://www.stat.go.jp/data/jinsui/2014np/zuhyou/05k26-2.xls",
+                         "https://www.stat.go.jp/data/jinsui/2016np/zuhyou/05k28-2.xls",
+                         "https://www.stat.go.jp/data/jinsui/2017np/zuhyou/05k29-2.xls",
+                         "https://www.stat.go.jp/data/jinsui/2018np/zuhyou/05k30-2.xls",
+                         "https://www.stat.go.jp/data/jinsui/2019np/zuhyou/05k01-2.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2021np/zuhyou/05k2021-2.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2022np/zuhyou/05k2022-2.xlsx",
+                         "https://www.stat.go.jp/data/jinsui/2023np/zuhyou/05k2023-2.xlsx",
+             "https://www.stat.go.jp/data/jinsui/2024np/zuhyou/05k2024-2.xlsx"
+             )
+```
+
+```{r}
+file_prf <- url_prf %>% str_extract("(?<=zuhyou\\/).+")
+
+path_prf <- paste0("../xlsx/pop/stat/prf/", file_prf)
+```
+
+```{r}
+for (i in 1:length(url_prf)){
+  download.file(url_prf[i], path_prf[i], mode = "wb")
+  print(paste(file_prf[i], "downloaded"))
+}
+```
+
+```{r}
+# for 2015 and 2020, download xlsx directly from the e-stats
+# place them in ../xlsx/
+```
+
+
+# check the downloaded files
+
+

@@ -1,0 +1,362 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+
+```{r}
+# make folder all in rds for saving data frame
+
+dir.create("../rds/pop/prf",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+```{r}
+# get folder names
+
+folder_prf <- list.files("../xlsx/pop/stat/prf") 
+
+folder_prf
+```
+
+```{r}
+path_prf <- paste0("../xlsx/pop/stat/prf/", folder_prf)
+
+path_prf
+```
+
+# read first two files
+
+```{r}
+get_data_prf <- function(xlsx_path){
+  
+  # define new colnames
+  new_colnames <- c("NO", "PRF_jp",
+                    "x3",
+                    "ALL_total", "ALL_m", "ALL_f", "ALL_mf_ratio",
+                    "JP_total", "JP_m", "JP_f", "JP_mf_ratio")
+  
+  # read total + 0-50 years old
+  df <- read_excel(xlsx_path ,
+                   range = cell_limits(c(12, 2), c(59, 12)),
+                   col_names = new_colnames)
+
+  
+  # remove x3 column
+  df <- df %>% select(!x3)
+  
+  # get sheet name: Table 1 or 2
+  sheet_name <- excel_sheets(xlsx_path) %>% str_extract("[:digit:]+")
+  
+  # get description
+  des <- read_excel(xlsx_path ,
+                   range = cell_limits(c(1, 1), c(1, 1)),
+                   col_names = "DES") %>% 
+    mutate(DES = str_extract(DES, "(?<=（)[^）]+(?=）)")) %>%
+    pull(DES)
+
+  # add file name
+  file_name <- xlsx_path %>% str_extract("(?<=prf\\/).+(?=\\.xls)")
+  
+
+  # add category: prf
+  df <- df %>% 
+    mutate(TABLE = sheet_name) %>%
+    mutate(DES = des) %>%
+    mutate(CAT = "prf") %>%
+    mutate(FILE = file_name)
+  
+  # fill NA in NO and PRF
+  df <- df %>%
+    mutate(NO = replace_na(NO, "00")) %>%
+    mutate(PRF_jp = replace_na(PRF_jp, "total"))
+  
+  # add year
+  df <- df %>%
+    mutate(YEAR = str_remove(DES, "平成")) %>%
+    mutate(YEAR = str_extract(YEAR, "[:digit:]+")) %>%
+    mutate(YEAR = as.numeric(YEAR)) %>%
+    mutate(YEAR = case_when(YEAR <= 31 ~ YEAR + 1988,
+                            .default = YEAR)) %>%
+    mutate(YEAR = as.character(YEAR))
+  
+
+  # relocate positions
+  df <- df %>%
+    relocate(TABLE, .before = "NO") %>%
+    relocate(CAT, .after = "TABLE") %>%
+    relocate(YEAR, .after = "CAT")
+  
+  # change pop statistics to numeric
+  df <- df %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ str_remove_all(.x, "\\,"))) %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ as.numeric(.x)))
+  
+  # remove white space
+  df <- df %>%
+    mutate(PRF_jp = str_trim(PRF_jp))
+  
+  return(df)
+
+  }
+```
+
+```{r}
+df_pop_prf <- map(path_prf, get_data_prf) %>% list_rbind()
+```
+
+```{r}
+  start <- seq(0, 80, 5)
+  
+  end <- seq(4, 84, 5)
+  
+  range<-  paste0(start, "_", end)
+  range
+```
+
+
+```{r}
+get_estat_prf <- function(xlsx_path){
+  
+  # define new colnames
+  new_colnames <- c("NO",
+                    "PRF_jp",
+                    "x3",
+                    "PRF_en",
+                    "x5")
+  
+  
+  # read 1st table
+  df_1 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(18, 3), c(65, 7)),
+                   col_names = new_colnames)
+  
+  # update colname
+  colnames(df_1)[5] <- "ALL_total" 
+  
+  # read 2nd table
+  df_2 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(85, 3), c(132, 7)),
+                   col_names = new_colnames)
+  
+  colnames(df_2)[5] <- "ALL_m"  
+  
+  # read 3nd table
+  df_3 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(152, 3), c(199, 7)),
+                   col_names = new_colnames)
+  
+  colnames(df_3)[5] <- "ALL_f" 
+   
+  
+    # read 4nd table
+  df_4 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(219, 3), c(266, 7)),
+                   col_names = new_colnames)
+  
+  colnames(df_4)[5] <- "JP_total" 
+  
+   
+      # read 5nd table
+  df_5 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(286, 3), c(333, 7)),
+                   col_names = new_colnames)
+  
+  colnames(df_5)[5] <- "JP_m"
+  
+  
+     # read 6nd table
+  df_6 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(353, 3), c(400, 7)),
+                   col_names = new_colnames)
+  
+  colnames(df_6)[5] <- "JP_f"
+  
+  # combine all
+  list_df <- list(df_1, df_2, df_3, df_4, df_5, df_6)
+  
+  
+  #fill NA
+  list_df <- map(list_df, function(x){
+    x %>% mutate(NO = replace_na(NO, "00")) %>%
+      mutate(PRF_jp = replace_na(PRF_jp, "total"))
+      
+  })
+  
+  
+  df <- list_df[[1]] %>%
+    left_join(list_df[[2]] %>% select(NO, ALL_m), by = join_by(NO)) %>%
+    left_join(list_df[[3]] %>% select(NO, ALL_f), by = join_by(NO)) %>%
+    left_join(list_df[[4]] %>% select(NO, JP_total), by = join_by(NO)) %>%
+    left_join(list_df[[5]] %>% select(NO, JP_m), by = join_by(NO)) %>%
+    left_join(list_df[[6]] %>% select(NO, JP_f), by = join_by(NO))
+  
+  # remove second column
+  df <- df %>% select(!x3)
+  
+  
+  # get description
+  des <- read_excel(xlsx_path ,
+                   range = cell_limits(c(3, 14), c(3, 14)),
+                   col_names = "DES") %>%
+    pull(DES)
+
+  # get year
+  
+  year <-   read_excel(xlsx_path ,
+                   range = cell_limits(c(3, 15), c(3, 15)),
+                   col_names = "YEAR") %>%
+    pull(YEAR) %>%
+    str_extract("[:digit:]{4}")
+  
+  # add file name
+  file_name <- xlsx_path %>% str_extract("(?<=prf\\/).+(?=\\.xls)")
+
+  
+  # clean PRF_en
+  
+  df <- df %>%
+    mutate(PRF_en = str_remove(PRF_en, "\\-.*"))
+
+  # add category: prf
+  df <- df %>% 
+    mutate(DES = des) %>%
+    mutate(TABLE = str_extract(DES, "(?<=Table\\s)[:digit:]")) %>%
+    mutate(YEAR = year) %>%
+    mutate(CAT = "prf") %>%
+    mutate(FILE = file_name)
+  
+  
+  # relocate positions
+  df <- df %>%
+    relocate(TABLE, .before = "NO") %>%
+    relocate(CAT, .after = "TABLE") %>%
+    relocate(YEAR, .after = "CAT")
+  
+  # change pop statistics to numeric
+  df <- df %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ str_remove_all(.x, "\\,"))) %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ as.numeric(.x)))
+  
+  # remove white space
+  df <- df %>% mutate(PRF_jp = str_trim(PRF_jp))
+  
+  return(df)
+
+  }
+```
+
+```{r}
+estat_prf <- list.files("../xlsx/pop/estat/prf")
+
+estat_prf
+```
+
+
+```{r}
+df_estat_prf <- map(paste0("../xlsx/pop/estat/prf/", estat_prf),
+                    get_estat_prf) %>%
+  list_rbind()
+```
+
+```{r}
+df_estat_prf %>% mutate(PRF_jp = str_trim(PRF_jp)) %>% View()
+
+```
+
+
+```{r}
+df_prf_en <- df_estat_prf %>%
+  filter(NO != "00") %>%
+  distinct(NO, PRF_en, .keep_all = TRUE) %>%
+  select(NO, PRF_en)
+```
+
+```{r}
+df_pop_prf <- df_pop_prf %>% left_join(df_prf_en, by = join_by(NO))
+```
+
+```{r}
+df_pop_prf <- df_pop_prf %>%
+  bind_rows(df_estat_prf)
+```
+
+```{r}
+df_jp <- rnaturalearth::ne_states("japan") %>% 
+  as_tibble() %>%
+  select(iso_3166_2, name_ja, name_en) %>%
+  arrange(iso_3166_2) %>%
+  rename(PRF_jp = "name_ja") %>%
+  rename(PRF_en = "name_en") %>%
+  mutate(PRF_en = str_replace_all(PRF_en, "Ō", "O")) %>%
+  mutate(PRF_en = str_replace_all(PRF_en, "ō", "o")) %>%
+  mutate(PRF_en = str_remove(PRF_en, "Prefecture")) %>%
+  mutate(PRF_en = str_trim(PRF_en, side = "both"))
+```
+
+
+```{r}
+df_pop_prf <- df_pop_prf %>% 
+  rename(PRF_en2 = "PRF_en") %>%
+  left_join(df_jp, by = join_by(PRF_jp))
+```
+
+```{r}
+df_pop_prf %>% filter(is.na(PRF_jp))
+```
+
+
+```{r}
+colnames(df_jp)
+colnames(df_pop_prf)
+```
+
+
+```{r}
+df_pop_prf %>%
+  filter(NO == "00") %>%
+  ggplot(aes(YEAR, ALL_total, group = NO))+
+  geom_line() +
+  scale_y_continuous(limits = c(0, 140000),
+                     breaks = seq(0, 140000, 20000))+
+  theme_classic()
+```
+```{r}
+df_pop_prf %>%
+  filter(PRF_en == "Tokyo") %>%
+  ggplot(aes(YEAR, ALL_total, group = NO))+
+  geom_line()
+```
+
+
+```{r}
+df_pop_prf %>%
+  filter(PRF_en == "Osaka") %>%
+  ggplot(aes(YEAR, ALL_total, group = NO))+
+  geom_line()
+```
+
+```{r}
+df_pop_prf %>%
+  filter(PRF_en == "Hyogo") %>%
+  ggplot(aes(YEAR, ALL_total, group = NO))+
+  geom_line()
+```
+
+
+```{r}
+saveRDS(df_pop_prf, "../rds/pop/prf/df_pop_prf")
+```
+

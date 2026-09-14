@@ -1,0 +1,256 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+
+```{r}
+# make folder all in rds for saving data frame
+
+dir.create("../rds/pop",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/pop/dem",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/pop/prf",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+```{r}
+# get folder names
+
+folder_dem <- list.files("../xlsx/pop/stat/dem") 
+
+folder_dem
+```
+```{r}
+path_dem <- paste0("../xlsx/pop/stat/dem/", folder_dem)
+
+path_dem
+```
+
+
+
+# read first two files
+
+```{r}
+get_data_dem <- function(xlsx_path){
+  
+  # define new colnames
+  new_colnames <- c("AGE",
+                    "ALL_total", "ALL_m", "ALL_f", "ALL_mf_ratio",
+                    "JP_total", "JP_m", "JP_f", "JP_mf_ratio")
+  
+  # read total + 0-50 years old
+  df_1 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(13, 1), c(63, 9)),
+                   col_names = new_colnames)
+  
+  df_2 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(14, 10), c(64, 18)),
+                   col_names = new_colnames)
+  
+  
+  df <- df_1 %>% bind_rows(df_2)
+  
+  # get sheet name: Table 1 or 2
+  sheet_name <- excel_sheets(xlsx_path) %>% str_extract("[:digit:]+")
+  
+  # get description
+  des <- read_excel(xlsx_path ,
+                   range = cell_limits(c(1, 10), c(1, 10)),
+                   col_names = "DES") %>% 
+    mutate(DES = str_extract(DES, "(?<=（)[^）]+(?=）)")) %>%
+    pull(DES)
+
+  # add file name
+  file_name <- xlsx_path %>% str_extract("(?<=dem\\/).+(?=\\.xls)")
+  
+
+  # add category: dem
+  df <- df %>% 
+    mutate(TABLE = sheet_name) %>%
+    mutate(DES = des) %>%
+    mutate(CAT = "dem") %>%
+    mutate(FILE = file_name)
+  
+  
+  # add year
+  
+  df <- df %>%
+    mutate(YEAR = str_remove(DES, "平成")) %>%
+    mutate(YEAR = str_extract(YEAR, "[:digit:]+")) %>%
+    mutate(YEAR = as.numeric(YEAR)) %>%
+    mutate(YEAR = case_when(YEAR <= 31 ~ YEAR + 1988,
+                            .default = YEAR)) %>%
+    mutate(YEAR = as.character(YEAR))
+  
+  # clean "AGE" column
+  df <- df %>%
+    mutate(AGE = str_replace(AGE, "総     数", "total")) %>%
+    mutate(AGE = str_replace(AGE, "歳以上", "_")) %>%
+    mutate(AGE = str_remove(AGE,  "\\s.+"))
+  
+  # relocate positions
+  
+  df <- df %>%
+    relocate(TABLE, .before = "AGE") %>%
+    relocate(CAT, .after = "TABLE") %>%
+    relocate(YEAR, .after = "CAT")
+  
+  # change pop statistics to numeric
+  df <- df %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ str_remove_all(.x, "\\,"))) %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ as.numeric(.x)))
+  
+  return(df)
+
+  }
+```
+
+```{r}
+df_pop_dem <- map(path_dem, get_data_dem) %>% list_rbind()
+```
+
+```{r}
+df_pop_dem %>%
+  filter(AGE == "total")
+```
+
+
+```{r}
+df_pop_dem %>%
+  filter(AGE == "total") %>%
+  ggplot(aes(YEAR, ALL_total, group = AGE)) +
+  geom_line()+
+  scale_y_continuous(limits = c(0, 140000),
+                     breaks = seq(0, 140000, 20000))+
+  theme_classic()
+```
+
+```{r}
+get_estat_dem <- function(xlsx_path){
+  
+  # define new colnames
+  new_colnames <- c("AGE",
+                    "x2",
+                    "ALL_total", "ALL_m", "ALL_f",
+                    "JP_total", "JP_m", "JP_f")
+  
+  # read total + all age
+  df_1 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(17, 2), c(67, 9)),
+                   col_names = new_colnames)
+  
+  
+  df_2 <- read_excel(xlsx_path ,
+                   range = cell_limits(c(90, 2), c(140, 9)),
+                   col_names = new_colnames)
+  
+  df <- df_1 %>% bind_rows(df_2)
+  
+  # remove second column
+  df <- df %>% select(!x2)
+  
+  # get description
+  des <- read_excel(xlsx_path ,
+                   range = cell_limits(c(3, 9), c(3, 9)),
+                   col_names = "DES") %>%
+    pull(DES)
+
+  # get year
+  year <- read_excel(xlsx_path ,
+                   range = cell_limits(c(75, 2), c(75, 2)),
+                   col_names = "YEAR") %>%
+    pull(YEAR) %>%
+    str_extract("[:digit:]{4}")
+  
+  
+  # add file name
+  file_name <- xlsx_path %>% str_extract("(?<=dem\\/).+(?=\\.xls)")
+  
+
+  # add category: dem
+  df <- df %>% 
+    mutate(DES = des) %>%
+    mutate(TABLE = str_extract(DES, "[:digit:]")) %>%
+    mutate(CAT = "dem") %>%
+    mutate(FILE = file_name)
+  
+  # add year
+  df <- df %>%
+    mutate(YEAR = year) %>%
+    mutate(YEAR = as.character(YEAR))
+  
+  # clean "AGE" column
+  df <- df %>%
+    mutate(AGE = str_replace(AGE, "総     数", "total")) %>%
+    mutate(AGE = str_remove(AGE, " 歳$")) %>%
+    mutate(AGE = str_replace(AGE, " 歳以上", "_"))
+  
+  # relocate positions
+  
+  df <- df %>%
+    relocate(TABLE, .before = "AGE") %>%
+    relocate(CAT, .after = "TABLE") %>%
+    relocate(YEAR, .after = "CAT")
+  
+  # change pop statistics to numeric
+  df <- df %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ str_remove_all(.x, "\\,"))) %>%
+    mutate(across( c(starts_with("ALL"), starts_with("JP")), ~ as.numeric(.x)))
+  
+  return(df)
+
+  }
+```
+
+```{r}
+estat_dem <- list.files("../xlsx/pop/estat/dem")
+
+estat_dem
+```
+
+
+
+
+```{r}
+df_estat_dem <- map(paste0("../xlsx/pop/estat/dem/", estat_dem),
+                    get_estat_dem) %>%
+  list_rbind()
+```
+
+
+```{r}
+df_pop_dem <- df_pop_dem %>%
+  bind_rows(df_estat_dem)
+```
+
+```{r}
+df_pop_dem %>%
+  filter(AGE == "total") %>%
+  ggplot(aes(YEAR, ALL_total, group = AGE)) +
+  geom_line()+
+  geom_point()+
+  scale_y_continuous(limits = c(0, 140000),
+                     breaks = seq(0, 140000, 20000))+
+  theme_classic()
+```
+
+```{r}
+saveRDS(df_pop_dem, "../rds/pop/dem/df_pop_dem")
+```
+
