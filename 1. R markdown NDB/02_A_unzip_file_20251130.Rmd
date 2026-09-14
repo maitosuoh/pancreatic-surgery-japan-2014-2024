@@ -1,0 +1,104 @@
+---
+title: "HBV NA"
+output: html_document
+date: "2025-11-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+library(archive)
+```
+
+```{r}
+dir.create("../unzip",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+# get folder names
+
+path_zip <- list.files("../zip", full.names = TRUE) 
+
+path_zip
+```
+
+```{r}
+folder_zip <- list.files("../zip") %>% str_remove("\\.zip")
+
+folder_zip
+```
+
+
+```{r}
+# unzip
+Sys.setlocale("LC_CTYPE", "Japanese")
+
+for (i in 1:length(path_zip)){
+
+  
+  
+archive_extract(archive = path_zip[i],
+                dir = paste0("../unzip/", folder_zip[i]))
+  
+}
+
+Sys.setlocale("LC_CTYPE", "")
+```
+
+```{r}
+list.files(path = "../unzip",
+           recursive = TRUE,
+           full.names = TRUE) %>%
+  as_tibble() %>% View()
+```
+
+
+```{r}
+# get unzip path
+
+df_unzip <- list.files(path = "../unzip",
+           recursive = TRUE,
+           full.names = TRUE) %>%
+  as_tibble() %>%
+  rename(path = "value") %>%
+  filter(str_detect(path, "D_検査|K_手術")) %>%
+  mutate(TYPE = case_when(
+                              str_detect(path, "D_検査") ~ "test",
+                              str_detect(path, "K_手術") ~ "surg"))　%>%
+  mutate(FOLDER = case_when(str_detect(path, "性年齢") ~ "dem",
+                              str_detect(path, "都道府県") ~ "prf",
+                              str_detect(path, "診療月") ~ "mon",
+                            str_detect(path, "二次医療圏") ~ "sec"
+                            )) %>%
+  mutate(UNZIP = str_extract(path, "(?<=unzip\\/)[^\\/]+(?=\\/)")) %>%
+  
+  mutate(FILE = str_extract(path, "(?<=\\/)[^\\/]+$")) %>%
+   mutate(EXDIR = paste0("../xlsx/", TYPE,"/", FOLDER, "/", UNZIP, "_", FILE))
+
+
+df_unzip 
+```
+
+
+
+```{r}
+
+for (i in 1:length(df_unzip$path)){
+
+file.copy(
+  from = df_unzip$path[i],
+  to = df_unzip $EXDIR[i]
+)
+  }
+```
+
+
+# end

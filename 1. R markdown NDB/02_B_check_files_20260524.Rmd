@@ -1,0 +1,59 @@
+---
+title: "Endoscopy"
+output: html_document
+date: "2026-05-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+list.files("../xlsx")
+```
+
+```{r}
+list.files("../xlsx/oral")
+```
+
+```{r}
+folder_name <- list.files("../xlsx/") 
+
+folder_name <- folder_name[str_detect(folder_name, "test|surg|inj|adm")]
+
+folder_path <- paste0("../xlsx/", folder_name)
+```
+
+
+
+```{r}
+final_path <- do.call(paste0,
+                      expand.grid(paste0(folder_path, "/"), c("dem", "prf", "mon", "sec")))
+```
+
+
+
+```{r}
+df_n <- map(final_path, function(x){
+  
+  df <- tibble(FOLDER = x,
+               n = list.files(x) %>% unique() %>% length())
+  
+  df <- df %>%
+    mutate(TYPE = str_extract(FOLDER, "test|surg|inj|adm"),
+           CAT = str_extract(FOLDER, "dem|prf|mon|sec")) %>%
+    select(!FOLDER) %>%
+    relocate(n, .after= "CAT")
+  
+  return(df)
+  
+  }) %>% list_rbind() %>%  arrange(CAT)
+
+df_n
+```
+

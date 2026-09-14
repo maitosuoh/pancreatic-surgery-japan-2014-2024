@@ -1,0 +1,677 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+```{r}
+# make folder all in rds for saving data frame
+
+dir.create("../rds/surg/sec",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+
+dir.create("../rds/inj/sec",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/test/sec",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+list.files("../xlsx/test/sec")
+```
+
+
+```{r}
+df_test_1 <-  read.xlsx("../xlsx/test/sec/000821451.xlsx",
+                        sheet = 3,
+                        startRow = 1,
+                        rows = c(1:5),
+                                           fillMergedCells = FALSE,
+                        skipEmptyRows = TRUE)
+```
+
+
+```{r}
+df_test_1 <- df_test_1[7:ncol(df_test_1)]
+```
+
+```{r}
+df_test_1 <- df_test_1  %>%
+  mutate(INDEX = c("PRF", "SEC_code", "SEC_name")) %>%
+  relocate(INDEX, .before = "X7")
+```
+
+
+```{r}
+df_long <- df_test_1 %>%
+  pivot_longer(!INDEX)
+```
+
+```{r}
+# split
+
+df_prf_long <- df_long %>%
+  filter(INDEX == "PRF") %>%
+  fill(value, .direction = "down") %>%
+  rename(PRF = "value")
+```
+
+```{r}
+df_sec_long <- df_prf_long %>%
+  left_join(df_long %>% filter(INDEX == "SEC_code") %>% select(name, value),
+            by = join_by("name")) %>%
+  rename(SEC_code = "value") %>%
+  left_join(df_long %>% filter(INDEX == "SEC_name") %>% select(name, value),
+            by = join_by("name")) %>%
+  rename(SEC_name = "value")
+```
+
+```{r}
+df_sec_long %>% filter(str_detect(PRF, "二次医療圏") & 
+                         str_detect(PRF, "判別不可")) 
+```
+
+
+
+```{r}
+# add 48 to unkown sector
+
+df_sec_long <- df_sec_long %>%
+  mutate(PRF = case_when(str_detect(PRF, "二次医療圏") & 
+                         str_detect(PRF, "判別不可") ~ paste("48", PRF),
+         .default = PRF))
+```
+
+
+```{r}
+# make unique names for colnames
+
+df_sec_long <- df_sec_long %>%
+  mutate(COL = paste(PRF, SEC_code, SEC_name)) %>%
+  mutate(COL = str_replace_all(COL, "\\s", "_"))
+```
+
+```{r}
+new_colnames <- df_sec_long$COL
+
+head(new_colnames)
+
+tail(new_colnames)
+```
+
+
+```{r}
+# function for getting sector names
+
+get_sec_colnames_reg_1 <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[!str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df_col <- map2(xlsx_path,
+                    sheet_name,
+                    function(x, y){
+                      read.xlsx(x,
+                      sheet = y,
+                      startRow = 1,
+                      rows = c(1:5),
+                      fillMergedCells = FALSE,
+                      skipEmptyRows = TRUE)}
+                    )
+  
+  # only keep columns with medical sector names
+  list_df_col <- map(list_df_col,
+                     function(x){
+                       x <- x[7:ncol(x)]
+                     })
+  
+  # create "INDEX" for each row and convert to long format
+  list_df_col_long <- map(list_df_col,
+                     function(x){
+                       x %>%
+                         mutate(INDEX = c("PRF", "SEC_code", "SEC_name")) %>%
+                         relocate(INDEX, .before = "X7") %>%
+                         pivot_longer(!INDEX)
+                     })
+  
+  list_df_col_prf <- map(list_df_col_long,
+                          function(x) {
+                            x %>%
+                              filter(INDEX == "PRF") %>%
+                              fill(value, .direction = "down") %>%
+                              rename(PRF = "value")
+                            })
+  
+  list_df_col_join <- map2(list_df_col_prf,
+                           list_df_col_long,
+                           function(x, y) {
+                            x %>%
+                              left_join(y %>%
+                                          filter(INDEX == "SEC_code") %>%
+                                          select(name, value),
+                                        by = join_by("name")) %>%
+                               rename(SEC_code = "value") %>%
+                               left_join(y %>%
+                                           filter(INDEX == "SEC_name") %>%
+                                           select(name, value),
+                                         by = join_by("name")) %>%
+                               rename(SEC_name = "value")
+                          })
+  
+  
+  list_colnames <- map(list_df_col_join,
+                           function(x){
+                             x %>%
+                               mutate(PRF = case_when(str_detect(PRF, "二次医療圏") & 
+                         str_detect(PRF, "判別不可") ~ paste("48", PRF),
+                         .default = PRF)) %>%
+                               mutate(COL = paste(PRF, SEC_code, SEC_name)) %>%
+                               mutate(COL = str_replace_all(COL, "\\s", "_")) %>%
+                               pull(COL)
+                           })
+  
+  list_colnames <- map(list_colnames, function(x){
+    c("CLASS_code", "CLASS_name", "PRO_code", "PRO_name", "POINT", "TOTAL",
+      x)
+  })
+  
+  return(list_colnames)
+  }
+                        
+```
+
+
+```{r}
+ex_col <- get_sec_colnames_reg_1("../xlsx/test/sec/000821451.xlsx")
+```
+
+
+```{r}
+ex_col[[1]] %>% length()
+```
+
+
+```{r}
+setdiff(ex_col[[1]], ex_col[[2]])
+setdiff(ex_col[[2]], ex_col[[1]])
+```
+
+```{r}
+tail(ex_col[[1]])
+
+tail(ex_col[[2]])
+```
+
+
+```{r}
+df_sec_long %>% pivot_wider(names_from = COL, values_from = SEC_code)
+```
+
+
+# read first two files
+
+```{r}
+get_data_sec_reg_1 <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[!str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df <- map2(xlsx_path,
+                  sheet_name,
+                  function(x, y){
+                    read.xlsx(x,
+                              sheet = y,
+                              startRow = 5,
+                              fillMergedCells = FALSE) %>%
+                    return()}) 
+  
+  
+  # get colnames
+  list_colnames <- get_sec_colnames_reg_1(xlsx_path)
+  
+  
+  #add first seven columns 
+  list_df <- map2(list_df, list_colnames,
+                 function(x, y){
+                   colnames(x) <- y
+                   return(x)})
+  
+  # add file name
+
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     mutate(FILE = xlsx_path) %>%
+                     mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+                     relocate(FILE, .before = "CLASS_code")  
+                 })
+
+  # add sheet name and do one hot coding for sheet
+  # "全体"
+  # "外来"         "外来（加算）" "入院"         "入院（加算）"
+  list_df <- map2(list_df, sheet_name,
+                 function(x, y){
+                   x %>% 
+                     mutate(SHEET_jp = y) %>%
+                         mutate(SHEET = case_when(
+                           str_detect(SHEET_jp, "全体") ~ "all",
+                           str_detect(SHEET_jp, "外来")　&
+                             !str_detect(SHEET_jp, "加算")~ "outpt",
+                           str_detect(SHEET_jp, "外来")　&
+                             str_detect(SHEET_jp, "加算")~ "outpt_ex",
+                           str_detect(SHEET_jp, "入院") &
+                             !str_detect(SHEET_jp, "加算") ~ "inpt",
+                           str_detect(SHEET_jp, "入院") &
+                             str_detect(SHEET_jp, "加算") ~ "input_ex"))    %>%
+                     relocate(SHEET, .after = "FILE")
+                   })
+  
+  # fill missing cells
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     tidyr::fill(c(starts_with("CLASS_")),
+                                 .direction = "down") %>%
+                     mutate(across(everything(), as.character))
+                 })
+  
+  # process year
+  # function for converting year into Western year
+  convert_year <- function(x){
+    if (str_detect(x, "^H")){
+      y <- x %>% str_remove("^H") %>% as.numeric()
+      y <- y + 1988
+      return(as.character(y))
+      }
+    else if (str_detect(x, "^R")){
+      y <- x %>% str_remove("^R") %>% as.numeric()
+      y <- y + 2018
+      return(as.character(y))
+      }
+    else{
+      return(x)
+      }
+    }
+  
+  # get year
+  get_year <- function(x, y){
+  read.xlsx(x, sheet = y, startRow =1 , colNames = FALSE, rows = 1) %>% 
+    rename(DES_jp = "X1") %>%
+    mutate(FILE = x) %>%
+    mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+    mutate(DES_jp = str_remove(DES_jp, "　※.+") )  %>%
+    mutate(DES_jp = str_remove(DES_jp, "診療年月："))　%>%
+    mutate(YEAR_str = str_extract(DES_jp, "[^年]+(?=年)")) %>%
+    mutate(YEAR_end = str_extract(DES_jp, "(?<=～)[^年]+(?=年)")) %>%
+    mutate(YEAR_str = convert_year(YEAR_str)) %>%
+    mutate(YEAR_end = convert_year(YEAR_end))
+    }
+  
+  list_year <- map2(xlsx_path,
+                     sheet_name, get_year)
+    
+  list_df <- map2(list_df, list_year, function(x, y){
+    x %>% left_join(y, by = join_by(FILE == FILE))
+  })
+  
+  # combine
+  df <- list_df %>% list_rbind()
+  
+  return(df)
+
+  }
+```
+
+# need to read different folders
+
+```{r}
+df_1 <- read.xlsx("../xlsx/test/sec/000821451.xlsx")
+```
+
+
+
+```{r}
+# for each folider, read the first two files, parse , combine and save
+# x is the overall folder name (ext inj)
+# y is the individual folder (reg sec)
+
+save_df_sec_reg_1 <- function(x, y){
+  xlsx <- list.files(paste0("../xlsx/", x, "/", y))
+  
+  xlsx <- xlsx[1]
+
+  from <- paste0("../xlsx/", x, "/", y, "/", xlsx)
+  
+  df <- map(from, get_data_sec_reg_1) %>% list_rbind()
+  
+  # add category
+  df <- df %>% 
+    mutate(TYPE = x) %>%
+    relocate(TYPE, .after = "FILE") %>%
+    mutate(CAT = y) %>%
+    relocate(CAT, .after = "TYPE")
+  
+  saveRDS(df, paste0("../rds/", x, "/", y,"/", "df_", x, "_", y, "_reg_1"))
+}
+```
+
+```{r}
+ list.files(paste0("../xlsx/", "test", "/", "sec"))
+```
+
+
+```{r}
+save_df_sec_reg_1("test", "sec")
+```
+
+```{r}
+df_test_sec_reg_1 <- readRDS("../rds/test/sec/df_test_sec_reg_1")
+```
+
+# prasing file 2-5
+
+
+```{r}
+# function for getting sector names
+
+get_sec_colnames_reg_2 <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[!str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df_col <- map2(xlsx_path,
+                    sheet_name,
+                    function(x, y){
+                      read.xlsx(x,
+                      sheet = y,
+                      startRow = 2,
+                      rows = c(2:6),
+                      fillMergedCells = FALSE,
+                      skipEmptyRows = TRUE)}
+                    )
+  
+  # only keep columns with medical sector names
+  list_df_col <- map(list_df_col,
+                     function(x){
+                       x <- x[7:ncol(x)]
+                     })
+  
+  # create "INDEX" for each row and convert to long format
+  list_df_col_long <- map(list_df_col,
+                     function(x){
+                       x %>%
+                         mutate(INDEX = c("PRF", "SEC_code", "SEC_name")) %>%
+                         relocate(INDEX, .before = "X7") %>%
+                         pivot_longer(!INDEX)
+                     })
+  
+  list_df_col_prf <- map(list_df_col_long,
+                          function(x) {
+                            x %>%
+                              filter(INDEX == "PRF") %>%
+                              fill(value, .direction = "down") %>%
+                              rename(PRF = "value")
+                            })
+  
+  list_df_col_join <- map2(list_df_col_prf,
+                           list_df_col_long,
+                           function(x, y) {
+                            x %>%
+                              left_join(y %>%
+                                          filter(INDEX == "SEC_code") %>%
+                                          select(name, value),
+                                        by = join_by("name")) %>%
+                               rename(SEC_code = "value") %>%
+                               left_join(y %>%
+                                           filter(INDEX == "SEC_name") %>%
+                                           select(name, value),
+                                         by = join_by("name")) %>%
+                               rename(SEC_name = "value")
+                          })
+  
+  
+  list_colnames <- map(list_df_col_join,
+                           function(x){
+                             x %>%
+                               mutate(PRF = case_when(str_detect(PRF, "二次医療圏") & 
+                         str_detect(PRF, "判別不可") ~ paste("48", PRF),
+                         .default = PRF)) %>%
+                               mutate(COL = paste(PRF, SEC_code, SEC_name)) %>%
+                               mutate(COL = str_replace_all(COL, "\\s", "_")) %>%
+                               pull(COL)
+                           })
+  
+  list_colnames <- map(list_colnames, function(x){
+    c("CLASS_code", "CLASS_name", "PRO_code", "PRO_name", "POINT", "TOTAL",
+      x)
+  })
+  
+  return(list_colnames)
+  }
+                        
+```
+
+```{r}
+col2 <- get_sec_colnames_reg_2("../xlsx/test/sec/001122099.xlsx")
+```
+
+```{r}
+col2[[1]] %>% head(n= 20)
+```
+
+
+```{r}
+get_data_sec_reg_2 <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[!str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df <- map2(xlsx_path,
+                  sheet_name,
+                  function(x, y){
+                    read.xlsx(x,
+                              sheet = y,
+                              startRow = 6,
+                              fillMergedCells = FALSE) %>%
+                    return()}) 
+  
+  
+  # get colnames
+  list_colnames <- get_sec_colnames_reg_2(xlsx_path)
+
+  
+  #add first seven columns 
+
+  list_df <- map2(list_df, list_colnames,
+                 function(x, y){
+                   colnames(x) <- y
+                   return(x)})
+  
+  # add file name
+
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     mutate(FILE = xlsx_path) %>%
+                     mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+                     relocate(FILE, .before = "CLASS_code")  
+                 })
+
+  # add sheet name and do one hot coding for sheet
+  # "全体"
+  # "外来"         "外来（加算）" "入院"         "入院（加算）"
+  list_df <- map2(list_df, sheet_name,
+                 function(x, y){
+                   x %>% 
+                     mutate(SHEET_jp = y) %>%
+                         mutate(SHEET = case_when(
+                           str_detect(SHEET_jp, "全体") ~ "all",
+                           str_detect(SHEET_jp, "外来")　&
+                             !str_detect(SHEET_jp, "加算")~ "outpt",
+                           str_detect(SHEET_jp, "外来")　&
+                             str_detect(SHEET_jp, "加算")~ "outpt_ex",
+                           str_detect(SHEET_jp, "入院") &
+                             !str_detect(SHEET_jp, "加算") ~ "inpt",
+                           str_detect(SHEET_jp, "入院") &
+                             str_detect(SHEET_jp, "加算") ~ "input_ex"))    %>%
+                     relocate(SHEET, .after = "FILE")
+                   })
+  
+  # fill missing cells
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     tidyr::fill(c(starts_with("CLASS_")),
+                                 .direction = "down") %>%
+                     mutate(across(everything(), as.character))
+                 })
+  
+  # process year
+  # function for converting year into Western year
+  convert_year <- function(x){
+    if (str_detect(x, "^H")){
+      y <- x %>% str_remove("^H") %>% as.numeric()
+      y <- y + 1988
+      return(as.character(y))
+      }
+    else if (str_detect(x, "^R")){
+      y <- x %>% str_remove("^R") %>% as.numeric()
+      y <- y + 2018
+      return(as.character(y))
+      }
+    else{
+      return(x)
+      }
+    }
+  
+  # get year
+  get_year <- function(x, y){
+  read.xlsx(x, sheet = y, startRow =1 , colNames = FALSE, rows = 1) %>% 
+    rename(DES_jp = "X1") %>%
+    mutate(FILE = x) %>%
+    mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+    mutate(DES_jp = str_remove(DES_jp, "　※.+") )  %>%
+    mutate(DES_jp = str_remove(DES_jp, "診療年月："))　%>%
+    mutate(YEAR_str = str_extract(DES_jp, "[^年]+(?=年)")) %>%
+    mutate(YEAR_end = str_extract(DES_jp, "(?<=～)[^年]+(?=年)")) %>%
+    mutate(YEAR_str = convert_year(YEAR_str)) %>%
+    mutate(YEAR_end = convert_year(YEAR_end))
+    }
+  
+  list_year <- map2(xlsx_path,
+                     sheet_name, get_year)
+    
+  list_df <- map2(list_df, list_year, function(x, y){
+    x %>% left_join(y, by = join_by(FILE == FILE))
+  })
+  
+  # combine
+  df <- list_df %>% list_rbind()
+  
+  return(df)
+
+  }
+```
+
+
+```{r}
+# for each folider, read the first two files, parse , combine and save
+# x is the overall folder name (ext inj)
+# y is the individual folder (reg sec)
+
+save_df_sec_reg_2 <- function(x, y){
+  xlsx <- list.files(paste0("../xlsx/", x, "/", y))
+  
+  xlsx <- xlsx[2:length(xlsx)]
+
+  from <- paste0("../xlsx/", x, "/", y, "/", xlsx)
+  
+  df <- map(from, get_data_sec_reg_2) %>% list_rbind()
+  
+  # add category
+  df <- df %>% 
+    mutate(TYPE = x) %>%
+    relocate(TYPE, .after = "FILE") %>%
+    mutate(CAT = y) %>%
+    relocate(CAT, .after = "TYPE")
+  
+  saveRDS(df, paste0("../rds/", x, "/", y,"/", "df_", x, "_", y, "_reg_2"))
+}
+```
+
+```{r}
+save_df_sec_reg_2("test", "sec")
+```
+
+```{r}
+df_test_sec_reg_2 <- readRDS("../rds/test/sec/df_test_sec_reg_2")
+```
+
+
+```{r}
+# combine both
+
+setdiff(colnames(df_test_sec_reg_1), colnames(df_test_sec_reg_2))
+
+setdiff(colnames(df_test_sec_reg_2), colnames(df_test_sec_reg_1))
+```
+
+```{r}
+df_test_sec_reg_1 %>% bind_rows(df_test_sec_reg_2) %>%
+  saveRDS("../rds/test/sec/df_test_sec_reg")
+```
+
+```{r}
+df_test_sec_reg <- readRDS("../rds/test/sec/df_test_sec_reg")
+```
+
+# parse inj
+
+```{r}
+save_df_sec_reg_1("inj", "sec")
+
+save_df_sec_reg_2("inj", "sec")
+```
+
+
+```{r}
+df_inj_sec_reg_1 <- readRDS("../rds/inj/sec/df_inj_sec_reg_1")
+
+df_inj_sec_reg_2 <- readRDS("../rds/inj/sec/df_inj_sec_reg_2")
+```
+
+
+```{r}
+df_inj_sec_reg_1 %>% bind_rows(df_inj_sec_reg_2) %>%
+   saveRDS("../rds/inj/sec/df_inj_sec_reg")
+```
+
+```{r}
+df_inj_sec_reg <- readRDS("../rds/inj/sec/df_inj_sec_reg")
+```
+
+
+# separate add
+
+# temporary end

@@ -1,0 +1,223 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# create directories
+
+dir.create("../xlsx", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../xlsx/test", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../xlsx/test/dem", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+dir.create("../xlsx/test/prf", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+dir.create("../xlsx/test/mon", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+dir.create("../xlsx/test/sec", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+# h26 age
+# https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000140356.xlsx
+
+# h27 age
+# https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000177242.xlsx
+
+# h28
+# https://www.mhlw.go.jp/content/12400000/000347712.xlsx
+
+# h29 
+# https://www.mhlw.go.jp/content/12400000/000711834.xlsx
+
+# h30
+# https://www.mhlw.go.jp/content/12400000/000539670.xlsx
+
+# h31
+# https://www.mhlw.go.jp/content/12400000/000821449.xlsx
+
+# r2
+# https://www.mhlw.go.jp/content/12400000/001262144.xlsx
+
+# r3
+# https://www.mhlw.go.jp/content/12400000/001122096.xlsx
+
+# r4
+# https://www.mhlw.go.jp/content/12400000/001258296.xlsx
+
+# r5
+# https://www.mhlw.go.jp/content/12400000/001493092.xlsx
+
+url_dem <- c("https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000140356.xlsx",
+             "https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000177242.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/000347712.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/000711834.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/000539670.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/000821449.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001262144.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001122096.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001258296.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001493092.xlsx")
+```
+
+```{r}
+file_dem <- url_dem %>% str_extract("00[:digit:]+\\.xlsx")
+
+path_dem <- paste0("../xlsx/test/dem/", file_dem)
+```
+
+```{r}
+for (i in 1:length(url_dem)){
+  download.file(url_dem[i], path_dem[i], mode = "wb")
+  print(paste(file_dem[i], "downloaded"))
+}
+```
+
+
+```{r}
+# h26 pref
+# https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000171424.xlsx
+
+# h27 pref
+# https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000177244.xlsx
+
+# h28
+# https://www.mhlw.go.jp/content/12400000/000347713.xlsx
+
+# h29
+# https://www.mhlw.go.jp/content/12400000/000711837.xlsx
+
+# h30
+# https://www.mhlw.go.jp/content/12400000/000539671.xlsx
+
+# h31
+# https://www.mhlw.go.jp/content/12400000/000821450.xlsx
+
+# r2
+# https://www.mhlw.go.jp/content/12400000/001262145.xlsx
+
+# r3
+# https://www.mhlw.go.jp/content/12400000/001122097.xlsx
+
+# r4
+# https://www.mhlw.go.jp/content/12400000/001258315.xlsx
+
+# r5
+# https://www.mhlw.go.jp/content/12400000/001493093.xlsx
+
+url_prf <- c(
+  "https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000171424.xlsx",
+  "https://www.mhlw.go.jp/file/06-Seisakujouhou-12400000-Hokenkyoku/0000177244.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/000347713.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/000711837.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/000539671.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/000821450.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001262145.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001122097.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001258315.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001493093.xlsx"
+)
+```
+
+```{r}
+file_prf <- url_prf %>% str_extract("00[:digit:]+\\.xlsx")
+
+path_prf <- paste0("../xlsx/test/prf/", file_prf)
+```
+
+```{r}
+for (i in 1:length(url_prf)){
+  download.file(url_prf[i], path_prf[i], mode = "wb")
+  print(paste(file_prf[i], "downloaded"))
+}
+```
+
+```{r}
+# monthly
+
+# h31
+# https://www.mhlw.go.jp/content/12400000/000825122.xlsx
+
+# r2
+# https://www.mhlw.go.jp/content/12400000/001262147.xlsx
+
+# r3
+# https://www.mhlw.go.jp/content/12400000/001122098.xlsx
+
+# r4
+# https://www.mhlw.go.jp/content/12400000/001258316.xlsx
+
+# r5
+# https://www.mhlw.go.jp/content/12400000/001493095.xlsx
+
+
+url_mon <- c(
+  "https://www.mhlw.go.jp/content/12400000/000825122.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001262147.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001122098.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001258316.xlsx",
+  "https://www.mhlw.go.jp/content/12400000/001493095.xlsx")
+
+```
+
+```{r}
+file_mon <- url_mon %>% str_extract("00[:digit:]+\\.xlsx")
+
+path_mon <- paste0("../xlsx/test/mon/", file_mon)
+```
+
+
+```{r}
+for (i in 1:length(url_mon)){
+  download.file(url_mon[i], path_mon[i], mode = "wb")
+  print(paste(file_mon[i], "downloaded"))
+}
+```
+
+```{r}
+# secondary
+
+# h31
+# https://www.mhlw.go.jp/content/12400000/000821451.xlsx
+
+# r2
+# https://www.mhlw.go.jp/content/12400000/001262151.xlsx
+
+# r3
+# https://www.mhlw.go.jp/content/12400000/001122099.xlsx
+
+# r4
+# https://www.mhlw.go.jp/content/12400000/001258317.xlsx
+
+# r5
+# https://www.mhlw.go.jp/content/12400000/001493098.xlsx
+
+url_sec <- c("https://www.mhlw.go.jp/content/12400000/000821451.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001262151.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001122099.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001258317.xlsx",
+             "https://www.mhlw.go.jp/content/12400000/001493098.xlsx"
+)
+```
+
+```{r}
+file_sec <- url_sec %>% str_extract("00[:digit:]+\\.xlsx")
+
+path_sec <- paste0("../xlsx/test/sec/", file_sec)
+```
+
+```{r}
+for (i in 1:length(url_sec)){
+  download.file(url_sec[i], path_sec[i], mode = "wb")
+  print(paste(file_sec[i], "downloaded"))
+}
+```

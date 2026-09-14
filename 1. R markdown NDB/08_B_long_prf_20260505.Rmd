@@ -1,0 +1,152 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+
+library(sf)
+library(rnaturalearth)
+```
+
+
+
+```{r}
+list.files("../xlsx/test/sec")
+```
+
+```{r}
+df_inj_prf_reg <- readRDS("../rds/inj/prf/df_inj_prf_reg")
+
+df_test_prf_reg <- readRDS("../rds/test/prf/df_test_prf_reg")
+
+df_surg_prf_reg <- readRDS("../rds/surg/prf/df_surg_prf_reg")
+```
+
+```{r}
+df_jp <- rnaturalearth::ne_states("japan") %>% 
+  as_tibble() %>%
+  select(iso_3166_2, name_ja, name_en) %>%
+  arrange(iso_3166_2) %>%
+  rename(PRF_jp = "name_ja") %>%
+  rename(PRF = "name_en") %>%
+  mutate(PRF = str_replace_all(PRF, "Ō", "O")) %>%
+  mutate(PRF = str_replace_all(PRF, "ō", "o")) %>%
+  mutate(PRF = str_remove(PRF, "Prefecture")) %>%
+  mutate(PRF = str_trim(PRF, side = "both"))
+```
+
+
+```{r}
+#regular long
+
+df_inj_prf_rl <- df_inj_prf_reg %>%
+  pivot_longer(cols = c(ends_with("都"), ends_with("道"), ends_with("府"), ends_with("県")),
+               names_to = "PRF_jp",
+               values_to = "VALUE") %>%
+  left_join(df_jp, by = join_by(PRF_jp))
+```
+
+```{r}
+df_inj_prf_rl
+```
+
+
+```{r}
+levels_prf <- df_jp %>% arrange(iso_3166_2) %>% pull(PRF)
+
+levels_prf
+```
+
+
+```{r}
+# define region
+
+hokkaido <- c("JP-01")
+
+tohoku <- c(paste0("JP-0", as.character(2:7)))
+
+kanto <- c(paste0("JP-0", as.character(8:9)), 
+           paste0("JP-", as.character(10:14)))
+
+chubu <- c(paste0("JP-", as.character(15:24)))
+
+kinki <- c(paste0("JP-", as.character(25:30)))
+
+chugoku <- c(paste0("JP-", as.character(31:35)))
+
+shikoku <- c(paste0("JP-", as.character(36:39)))
+
+kyusyu_okinawa <- c(paste0("JP-", as.character(40:47)))
+
+```
+
+
+```{r}
+levels_reg <- c("Hokkaido",
+                "Tohoku",
+                "Kanto",
+                "Chubu",
+                "Kansai",
+                "Chugoku",
+                "Shikoku",
+                "Kyusyu\nOkinawa")
+```
+
+```{r}
+df_jp <- df_jp %>%
+  mutate(REG = case_when(iso_3166_2 %in% hokkaido ~ "Hokkaido",
+                         iso_3166_2 %in% tohoku ~ "Tohoku",
+                         iso_3166_2 %in% kanto ~ "Kanto",
+                         iso_3166_2 %in% chubu ~ "Chubu",
+                         iso_3166_2 %in% kinki ~ "Kansai",
+                         iso_3166_2 %in% chugoku ~ "Chugoku",
+                         iso_3166_2 %in% shikoku ~ "Shikoku",
+                         iso_3166_2 %in% kyusyu_okinawa ~ "Kyusyu\nOkinawa")) %>%
+  mutate(REG = factor(REG, levels = levels_reg)) %>%
+  mutate(PRF = factor(PRF, levels = levels_prf))
+```
+
+
+
+```{r}
+save_prf_long <- function(x){
+  x %>%
+    pivot_longer(cols = c(ends_with("都"), ends_with("道"), ends_with("府"), ends_with("県")),
+               names_to = "PRF_jp",
+               values_to = "VALUE") %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ na_if(.x, "-"))) %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ replace_na(.x, "0"))) %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ as.numeric(.x))) %>%
+    left_join(df_jp, by = join_by(PRF_jp)) %>%
+    mutate(PRF = factor(PRF, levels = levels_prf))
+}
+```
+
+
+```{r}
+type <- c("inj", "test", "surg")
+
+#path <- paste0("../rds/", type, "/dem/df_", type,  "_dem_reg")
+```
+
+
+```{r}
+for (i in 1:length(type)){
+  from <- paste0("../rds/", type[i], "/prf/df_", type[i],  "_prf_reg")
+  
+  to <- paste0("../df/prf/df_", type[i], "_prf_reg")
+  
+  readRDS(from) %>% save_prf_long() %>% saveRDS(to)
+}
+```
+

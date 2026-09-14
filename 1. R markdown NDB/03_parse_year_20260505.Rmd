@@ -1,0 +1,178 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(RCurl)
+library(tidyverse)
+library(XML)
+library(xml2)
+library(rvest)
+library(readxl)
+library(openxlsx)
+```
+
+
+
+```{r}
+# split based on dem/prf
+#folder_dem <- folder_name %>% str_subset("_dem$")
+
+#folder_dem
+```
+
+```{r}
+# create rds folder
+dir.create("../rds/",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/test",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/inj",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/surg",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+```{r}
+# all oral folders
+
+folder_test<- list.files("../xlsx/test")
+
+
+folder_test
+```
+
+```{r}
+dir.create("../rds/test/year",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/inj/year",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../rds/surg/year",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+# function for converting year, will be used inside the next function
+convert_year <- function(x){
+  if (str_detect(x, "^H")){
+    y <- x %>% str_remove("^H") %>% as.numeric()
+    y <- y + 1988
+    return(as.character(y))
+  }
+  else if (str_detect(x, "^R")){
+    y <- x %>% str_remove("^R") %>% as.numeric()
+    y <- y + 2018
+    return(as.character(y))
+  }
+  else{
+    return(x)
+  }
+}
+```
+
+
+```{r}
+# function for reading the first line and getting the year information
+
+get_year <- function(x){
+  read.xlsx(x, sheet = 1, startRow =1 , colNames = FALSE, rows = 1) %>% 
+    rename(DES_jp = "X1") %>%
+    mutate(FILE = x) %>%
+    mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+    mutate(DES_jp = str_remove(DES_jp, "　※.+") )  %>%
+    mutate(DES_jp = str_remove(DES_jp, "診療年月："))　%>%
+ #   separate_wider_delim(CHR, delim = "　",
+ #                        names = c("YEAR", "EXP"),
+#                         too_few = "align_start") %>%
+    mutate(YEAR_str = str_extract(DES_jp, "[^年]+(?=年)")) %>%
+    mutate(YEAR_end = str_extract(DES_jp, "(?<=～)[^年]+(?=年)")) %>%
+    mutate(YEAR_str = convert_year(YEAR_str)) %>%
+    mutate(YEAR_end = convert_year(YEAR_end)) 
+}
+```
+
+
+```{r}
+# x is the folder path
+# y is subcategory
+
+save_df_year <- function(x, y){
+  xlsx <- list.files(paste0("../xlsx/", x, "/", y))
+  from <- paste0("../xlsx/", x , "/", y, "/", xlsx)
+  
+  df <- map(from, get_year) %>% list_rbind()
+  
+  saveRDS(df, paste0("../rds/", x,  "/year/","df_year_", x, "_", y))
+}
+```
+
+```{r}
+list.files("../xlsx")
+```
+
+```{r}
+for (i in 1:length(folder_test)){
+  save_df_year("test", folder_test[i])
+  print(paste(folder_test[i], "completed"))
+}
+```
+```{r}
+df_ex <- readRDS("../rds/test/year/df_year_test_dem")
+```
+
+# ext
+
+```{r}
+# all inj folders
+
+folder_inj <- list.files("../xlsx/inj")
+
+folder_inj
+```
+
+
+```{r}
+for (i in 1:length(folder_inj)){
+  save_df_year("inj", folder_inj[i])
+  print(paste(folder_inj[i], "completed"))
+}
+```
+
+
+# prf
+
+```{r}
+# all surg folders
+
+folder_surg <- list.files("../xlsx/surg")
+
+
+folder_surg
+```
+
+```{r}
+for (i in 1:length(folder_surg)){
+  save_df_year("surg", folder_surg[i])
+  print(paste(folder_surg[i], "completed"))
+}
+```
+
+# end of run
+
+
+```{r}
+df_ex <- readRDS("../rds/inj/year/df_year_inj_dem")
+```
+

@@ -1,0 +1,99 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+
+
+```{r}
+list.files("../xlsx/test/sec")
+```
+
+```{r}
+dir.create("../df", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../df/dem", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../df/prf", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../df/mon", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+dir.create("../df/sec", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+```{r}
+df_inj_dem_reg <- readRDS("../rds/inj/dem/df_inj_dem_reg")
+
+df_test_dem_reg <- readRDS("../rds/test/dem/df_test_dem_reg")
+
+df_surg_dem_reg <- readRDS("../rds/surg/dem/df_surg_dem_reg")
+
+```
+
+```{r}
+df_mat_dem_reg <- readRDS("../rds/mat/dem/df_mat_dem_reg")
+```
+
+
+
+```{r}
+#regular long
+
+df_inj_dem_rl <- df_inj_dem_reg %>%
+  pivot_longer(cols = c(starts_with("M_"), starts_with("F_")),
+               names_to = "SEX_AGE",
+               values_to = "VALUE") %>%
+  mutate(SEX = str_extract(SEX_AGE, "^[:alpha:]")) %>%
+  mutate(AGE = str_remove(SEX_AGE, "^[:alpha:]\\_")) %>%
+  mutate(across(c(TOTAL, VALUE), ~ na_if(.x, "-"))) %>%
+  mutate(across(c(TOTAL, VALUE), ~ as.numeric(.x)))
+```
+
+```{r}
+save_dem_long <- function(x){
+  x %>%
+    pivot_longer(cols = c(starts_with("M_"), starts_with("F_")),
+               names_to = "SEX_AGE",
+               values_to = "VALUE") %>%
+  mutate(SEX = str_extract(SEX_AGE, "^[:alpha:]")) %>%
+  mutate(AGE = str_remove(SEX_AGE, "^[:alpha:]\\_")) %>%
+  mutate(across(c(TOTAL, VALUE, POINT), ~ na_if(.x, "-"))) %>%
+  mutate(across(c(TOTAL, VALUE, POINT), ~ replace_na(.x, "0"))) %>%
+  mutate(across(c(TOTAL, VALUE, POINT), ~ as.numeric(.x))) 
+}
+```
+
+```{r}
+df_surg_dem_reg %>% save_dem_long()
+```
+
+
+```{r}
+type <- c("inj", "test", "surg")
+
+#path <- paste0("../rds/", type, "/dem/df_", type,  "_dem_reg")
+```
+
+
+```{r}
+for (i in 1:length(type)){
+  from <- paste0("../rds/", type[i], "/dem/df_", type[i],  "_dem_reg")
+  
+  to <- paste0("../df/dem/df_", type[i], "_dem_reg")
+  
+  readRDS(from) %>% save_dem_long() %>% saveRDS(to)
+}
+```
+

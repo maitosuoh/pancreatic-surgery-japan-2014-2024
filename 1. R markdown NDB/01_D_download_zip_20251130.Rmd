@@ -1,0 +1,45 @@
+---
+title: "HBV NA"
+output: html_document
+date: "2025-11-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# create directories
+
+dir.create("../zip", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+```{r}
+# xlsx files for oral drug, outpatient 
+#　内服　外来 院外　制年齢
+
+# 11th 2024
+# "https://www.mhlw.go.jp/content/12400000/001712211.zip"
+
+url_drug_zip <- c("https://www.mhlw.go.jp/content/12400000/001712211.zip")
+
+```
+
+```{r}
+file_drug_zip <- url_drug_zip %>% str_extract("00[:digit:]+\\.zip")
+
+path_drug_zip <- paste0("../zip/", file_drug_zip)
+```
+
+```{r}
+for (i in 1:length(url_drug_zip)){
+  download.file(url_drug_zip[i], path_drug_zip[i], mode = "wb")
+  print(paste(file_drug_zip[i], "downloaded"))
+}
+```
+

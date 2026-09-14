@@ -1,0 +1,98 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+library(sf)
+library(rnaturalearth)
+```
+
+
+
+```{r}
+list.files("../xlsx/test/sec")
+```
+
+```{r}
+df_inj_mon_reg <- readRDS("../rds/inj/mon/df_inj_mon_reg")
+
+df_test_mon_reg <- readRDS("../rds/test/mon/df_test_mon_reg")
+
+df_surg_mon_reg <- readRDS("../rds/surg/mon/df_surg_mon_reg")
+```
+
+
+```{r}
+#regular long
+
+df_inj_mon_rl <- df_inj_mon_reg %>%
+  pivot_longer(cols = ends_with("月"),
+               names_to = "MON_jp",
+               values_to = "VALUE") %>%
+  mutate(MON = str_remove(MON_jp, "月")) %>%
+  mutate(MON = case_when(as.numeric(MON) <= 9 ~ paste0("0", MON),
+                         .default = as.character(MON))) %>%
+  mutate(YMD = paste0(YEAR_str, "-", MON, "-01")) %>%
+  mutate(YMD = as_date(YMD))
+```
+
+```{r}
+df_inj_mon_rl
+```
+
+
+```{r}
+save_mon_long <- function(x){
+  x %>%
+    pivot_longer(cols = ends_with("月"),
+               names_to = "MON_jp",
+               values_to = "VALUE") %>%
+    mutate(MON = str_remove(MON_jp, "月")) %>%
+    mutate(MON = case_when(as.numeric(MON) <= 9 ~ paste0("0", MON),
+                         .default = as.character(MON))) %>%
+    mutate(YMD = paste0(YEAR_str, "-", MON, "-01")) %>%
+    mutate(YMD = as_date(YMD)) %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ na_if(.x, "-"))) %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ replace_na(.x, "0"))) %>%
+    mutate(across(c(TOTAL, VALUE, POINT), ~ as.numeric(.x)))
+}
+```
+
+
+```{r}
+type <- c("inj", "test", "surg")
+
+#path <- paste0("../rds/", type, "/dem/df_", type,  "_dem_reg")
+```
+
+
+```{r}
+for (i in 1:length(type)){
+  from <- paste0("../rds/", type[i], "/mon/df_", type[i],  "_mon_reg")
+  
+  to <- paste0("../df/mon/df_mon_", type[i], "_reg")
+  
+  readRDS(from) %>% save_mon_long() %>% saveRDS(to)
+}
+```
+
+
+```{r}
+for (i in 1:length(type)){
+  from <- paste0("../rds/", type[i], "/mon/df_", type[i],  "_mon_add")
+  
+  to <- paste0("../df/mon/df_mon_", type[i], "_add")
+  
+  readRDS(from) %>% save_mon_long() %>% saveRDS(to)
+}
+```

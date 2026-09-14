@@ -1,0 +1,392 @@
+---
+title: "Pancreatic tumor"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+
+```{r}
+# make folder all in rds for saving data frame
+
+dir.create("../rds/surg/prf",
+             showWarnings = TRUE, recursive = FALSE, mode = "0777")
+
+```
+
+```{r}
+# get folder names
+
+folder_test <- list.files("../xlsx/surg") 
+
+folder_test
+```
+
+```{r}
+list.files("../xlsx/surg")
+```
+
+```{r}
+xlsx_surg_prf <- list.files("../xlsx/surg/prf") 
+
+xlsx_surg_prf
+```
+
+
+
+```{r}
+for (i in 1:length(xlsx_surg_prf)){
+  print(getSheetNames(paste0("../xlsx/surg/prf/", xlsx_surg_prf[i])))
+}
+```
+
+
+
+# read first two files
+
+```{r}
+get_data_prf_reg <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[!str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df <- map2(xlsx_path,
+                  sheet_name,
+                  function(x, y) read.xlsx(x,
+                                           sheet = y,
+                                           startRow = 4,
+                                           fillMergedCells = FALSE)) 
+  
+  
+  # clean colnames
+  new_colnames <- c("ORGAN", "CLASS_code", "CLASS_name",
+                       "PRO_code", "PRO_name",
+                       "POINT", "TOTAL")
+
+  list_df <- map(list_df,
+                 function(x){
+                   colnames(x)[1:length(new_colnames)] <- new_colnames
+                   return(x)})
+  
+  # add file name
+
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     mutate(FILE = xlsx_path) %>%
+                     mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+                     relocate(FILE, .before = "CLASS_code")  
+                 })
+
+  # add sheet name and do one hot coding for sheet
+  # "全体"
+  # "外来"         "外来（加算）" "入院"         "入院（加算）"
+  list_df <- map2(list_df, sheet_name,
+                 function(x, y){
+                   x %>% 
+                     mutate(SHEET_jp = y) %>%
+                         mutate(SHEET = case_when(
+                           str_detect(SHEET_jp, "全体") ~ "all",
+                           str_detect(SHEET_jp, "外来")　&
+                             !str_detect(SHEET_jp, "加算")~ "outpt",
+                           str_detect(SHEET_jp, "外来")　&
+                             str_detect(SHEET_jp, "加算")~ "outpt_ex",
+                           str_detect(SHEET_jp, "入院") &
+                             !str_detect(SHEET_jp, "加算") ~ "inpt",
+                           str_detect(SHEET_jp, "入院") &
+                             str_detect(SHEET_jp, "加算") ~ "input_ex"))    %>%
+                     relocate(SHEET, .after = "FILE")
+                   })
+  
+  # fill missing cells
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     tidyr::fill(c(ORGAN , starts_with("CLASS_")),
+                                 .direction = "down") %>%
+                     mutate(across(everything(), as.character))
+                 })
+  
+  # process year
+  # function for converting year into Western year
+  convert_year <- function(x){
+    if (str_detect(x, "^H")){
+      y <- x %>% str_remove("^H") %>% as.numeric()
+      y <- y + 1988
+      return(as.character(y))
+      }
+    else if (str_detect(x, "^R")){
+      y <- x %>% str_remove("^R") %>% as.numeric()
+      y <- y + 2018
+      return(as.character(y))
+      }
+    else{
+      return(x)
+      }
+    }
+  
+  # get year
+  get_year <- function(x, y){
+  read.xlsx(x, sheet = y, startRow =1 , colNames = FALSE, rows = 1) %>% 
+    rename(DES_jp = "X1") %>%
+    mutate(FILE = x) %>%
+    mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+    mutate(DES_jp = str_remove(DES_jp, "　※.+") )  %>%
+    mutate(DES_jp = str_remove(DES_jp, "診療年月："))　%>%
+    mutate(YEAR_str = str_extract(DES_jp, "[^年]+(?=年)")) %>%
+    mutate(YEAR_end = str_extract(DES_jp, "(?<=～)[^年]+(?=年)")) %>%
+    mutate(YEAR_str = convert_year(YEAR_str)) %>%
+    mutate(YEAR_end = convert_year(YEAR_end))
+    }
+  
+  list_year <- map2(xlsx_path,
+                     sheet_name, get_year)
+    
+  list_df <- map2(list_df, list_year, function(x, y){
+    x %>% left_join(y, by = join_by(FILE == FILE))
+  })
+  
+  # combine
+  df <- list_df %>% list_rbind()
+  
+  return(df)
+
+  }
+```
+
+```{r}
+# for each folider, read the first two files, parse , combine and save
+# x is the overall folder name (ext inj)
+# y is the individual folder (reg prf)
+
+save_df_prf_reg <- function(x, y){
+  xlsx <- list.files(paste0("../xlsx/", x, "/", y))
+
+  from <- paste0("../xlsx/", x, "/", y, "/", xlsx)
+  
+  df <- map(from, get_data_prf_reg) %>% list_rbind()
+  
+  # add category
+  df <- df %>% 
+    mutate(TYPE = x) %>%
+    relocate(TYPE, .after = "FILE") %>%
+    mutate(CAT = y) %>%
+    relocate(CAT, .after = "TYPE")
+  
+  saveRDS(df, paste0("../rds/", x, "/", y,"/", "df_", x, "_", y, "_reg"))
+}
+```
+
+```{r}
+save_df_prf_reg("surg", "prf")
+```
+
+```{r}
+df_surg_prf_reg <- readRDS("../rds/surg/prf/df_surg_prf_reg")
+```
+
+```{r}
+df_surg_prf_reg %>% count(ORGAN)
+```
+
+# add (additional cost)
+
+# to read the file properly, need to remove "addition" sheets in cells 5B, 5C
+# (present randomly)
+```{r}
+get_data_prf_add <- function(xlsx_path){
+  
+  sheet_name <- getSheetNames(xlsx_path)
+  
+  sheet_name <- sheet_name[str_detect(sheet_name, "加算")]
+  
+  # read excel sheet
+  list_df <- map2(xlsx_path,
+                  sheet_name,
+                  function(x, y) read.xlsx(x,
+                                           sheet = y,
+                                           startRow = 4,
+                                           skipEmptyCols = FALSE,
+                                           fillMergedCells = FALSE) %>%
+                    return())
+
+   # clean colnames
+  new_colnames <- c("ADD",
+                      "CLASS_code", "CLASS_name",
+                       "PRO_code", "PRO_name",
+                       "POINT", "PCT", "TOTAL")
+
+  # update column names
+  list_df <- map(list_df,
+                 function(x){
+                   colnames(x)[1:length(new_colnames)] <- new_colnames
+                   return(x)})
+  
+  # clean colnames, remove white space
+  list_df <- map(list_df,
+                 function(x) x %>%
+                   mutate(across(starts_with("CLASS"), ~ as.character(.x))) %>%
+                   mutate(across(starts_with("CLASS"), ~ na_if(.x, " "))) %>%
+                   return()
+                 )
+  
+  # fill add first
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     tidyr::fill(starts_with("ADD"), .direction = "down")
+                 })
+  
+  # split columns
+  list_df_dev <- map(list_df,
+                     function(x){
+                       x %>% filter(ADD == "手術医療機器等加算") %>%
+                         tidyr::fill(starts_with("CLASS"), .direction = "down") %>%
+                         return()
+                     })
+  
+  
+  list_df_tc <- map(list_df,
+                    function(x){
+                      x %>% filter(ADD == "通則加算・注加算") 
+                    })
+  
+  list_df <- map2(list_df_dev, 
+                 list_df_tc, 
+                 function(x, y){
+                   x %>% bind_rows(y) %>% return()
+                   })
+  
+  
+  # add file name
+
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     mutate(FILE = xlsx_path) %>%
+                     mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+                     relocate(FILE, .before = "ADD")  
+                 })
+
+  # add sheet name and do one hot coding for sheet
+  # "注射薬 外来 (院内)" "注射薬 外来 (院外)" "注射薬 入院"  
+  list_df <- map2(list_df, sheet_name,
+                 function(x, y){
+                   x %>% 
+                     mutate(SHEET_jp = y) %>%
+                         mutate(SHEET = case_when(
+                           str_detect(SHEET_jp, "全体") ~ "all",
+                           str_detect(SHEET_jp, "外来")　&
+                             !str_detect(SHEET_jp, "加算")~ "outpt",
+                           str_detect(SHEET_jp, "外来")　&
+                             str_detect(SHEET_jp, "加算")~ "outpt_add",
+                           str_detect(SHEET_jp, "入院") &
+                             !str_detect(SHEET_jp, "加算") ~ "inpt",
+                           str_detect(SHEET_jp, "入院") &
+                             str_detect(SHEET_jp, "加算") ~ "input_add"))    %>%
+                     relocate(SHEET, .after = "FILE")
+                   })
+  
+  # fill missing cells
+  list_df <- map(list_df,
+                 function(x){
+                   x %>% 
+                     mutate(across(everything(), as.character))
+                 })
+  
+  # process year
+  # function for converting year into Western year
+  convert_year <- function(x){
+    if (str_detect(x, "^H")){
+      y <- x %>% str_remove("^H") %>% as.numeric()
+      y <- y + 1988
+      return(as.character(y))
+      }
+    else if (str_detect(x, "^R")){
+      y <- x %>% str_remove("^R") %>% as.numeric()
+      y <- y + 2018
+      return(as.character(y))
+      }
+    else{
+      return(x)
+      }
+    }
+  
+  # get year
+  get_year <- function(x, y){
+  read.xlsx(x, sheet = y, startRow =1 , colNames = FALSE, rows = 1) %>% 
+    rename(DES_jp = "X1") %>%
+    mutate(FILE = x) %>%
+    mutate(FILE = str_extract(FILE, "(?<=\\/)00[:digit:]+(?=\\.xlsx)")) %>%
+    mutate(DES_jp = str_remove(DES_jp, "　※.+") )  %>%
+    mutate(DES_jp = str_remove(DES_jp, "診療年月："))　%>%
+    mutate(YEAR_str = str_extract(DES_jp, "[^年]+(?=年)")) %>%
+    mutate(YEAR_end = str_extract(DES_jp, "(?<=～)[^年]+(?=年)")) %>%
+    mutate(YEAR_str = convert_year(YEAR_str)) %>%
+    mutate(YEAR_end = convert_year(YEAR_end))
+    }
+  
+  list_year <- map2(xlsx_path,
+                     sheet_name, get_year)
+    
+  list_df <- map2(list_df, list_year, function(x, y){
+    x %>% left_join(y, by = join_by(FILE == FILE))
+  })
+  
+  # combine
+  df <- list_df %>% list_rbind()
+  
+  return(df)
+
+  }
+```
+
+```{r}
+# for each folider, read the first two files, parse , combine and save
+# x is the overall folder name (ext inj)
+# y is the individual folder (reg prf)
+
+save_df_prf_add <- function(x, y){
+  xlsx <- list.files(paste0("../xlsx/", x, "/", y))
+  
+  #xlsx <- xlsx[1:2]
+  
+  from <- paste0("../xlsx/", x, "/", y, "/", xlsx)
+  
+  df <- map(from, get_data_prf_add) %>% list_rbind()
+  
+  
+  # add category
+  df <- df %>% 
+    mutate(TYPE = x) %>%
+    relocate(TYPE, .after = "FILE") %>%
+    mutate(CAT = y) %>%
+    relocate(CAT, .after = "TYPE")
+  
+  saveRDS(df, paste0("../rds/", x, "/", y,"/", "df_", x, "_", y, "_add"))
+}
+```
+
+
+```{r}
+save_df_prf_add("surg", "prf")
+```
+
+```{r}
+df_surg_prf_add <- readRDS("../rds/surg/prf/df_surg_prf_add")
+```
+
+```{r}
+df_surg_prf_add%>% count(SHEET_jp)
+```
