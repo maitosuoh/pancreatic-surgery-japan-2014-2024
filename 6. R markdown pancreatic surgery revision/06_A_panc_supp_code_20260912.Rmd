@@ -1,0 +1,187 @@
+---
+title: "Pancreatic cacner"
+output: html_document
+date: "2026-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+library(stringi)
+library(fpp3)
+
+library(scales)
+library(ggtext)
+library(patchwork)
+library(ggh4x)
+
+library(cowplot)
+library(pals)
+```
+
+
+```{r}
+# make df folder
+
+#dir.create("../df/long", showWarnings = TRUE, recursive = FALSE, #mode = "0777")
+```
+
+```{r}
+df_surg_dem <- readRDS("../df/dem/df_surg_dem_reg")
+```
+
+```{r}
+df_test_dem <- readRDS("../df/dem/df_inj_dem_reg")
+```
+
+```{r}
+df_test_mon_reg <-  readRDS("../df/mon/df_mon_test_reg")
+```
+
+
+```{r}
+df_pop_dem <- readRDS("../rds/pop/dem/df_pop_dem")
+```
+
+
+```{r}
+df_surg_dem %>% count(YEAR_str)
+```
+
+```{r}
+df_surg_dem %>% filter(is.na(TOTAL)) %>% nrow()
+```
+
+
+```{r}
+df_surg_dem %>% count(SHEET, YEAR_str)
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+  
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  mutate(AGE = str_replace_all(AGE, "_", "-"))
+```
+
+```{r}
+df_surg_dem <- df_surg_dem  %>%
+  mutate(SEX = case_when(SEX == "M" ~ "Male",
+                         SEX == "F" ~ "Female")) %>%
+  mutate(SEX = factor(SEX, levels = c("Male", "Female")))
+```
+
+
+```{r}
+# check total 
+df_surg_dem %>%
+  filter(str_detect(CLASS_code, "^K704"))  %>%
+  group_by(YEAR) %>%
+  summarise(SUM_value = sum(VALUE)) %>%
+  left_join(df_surg_dem %>%
+              filter(str_detect(CLASS_code, "^K704"))  %>%
+              distinct(PRO_name, YEAR, .keep_all = TRUE) %>%
+              select(YEAR, TOTAL),
+            by = join_by(YEAR)) 
+```
+
+
+```{r}
+# 702 body and tail
+# 703 head
+# 704 total 全摘
+
+df_panc <- df_surg_dem %>% 
+  distinct(CLASS_code,  PRO_code, .keep_all = TRUE) %>%
+  select(c(starts_with("CLASS"), starts_with("PRO"))) %>%
+  filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Laparoscopic",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code %in% c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Enucleation")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Enucleation")))
+```
+
+
+```{r}
+df_panc %>%
+  group_by(LOC, TX) %>%
+   arrange(CLASS_code, LOC, TX) %>%
+  mutate(FLAT = str_flatten(PRO_code, collapse = ", ")) %>%
+  distinct(CLASS_code, LOC, TX, .keep_all = TRUE) %>%
+  select(CLASS_code, LOC, TX, FLAT) 
+
+```
+
+```{r}
+df_panc_code <- df_panc %>%
+  group_by(LOC, TX) %>%
+   arrange(CLASS_code, LOC, TX) %>%
+  mutate(RN = paste0("RN_", row_number())) %>%
+  select(CLASS_code, LOC, TX, RN, PRO_code) %>%
+  pivot_wider(values_from = PRO_code,
+              names_from = RN,
+              values_fill = "") %>%
+  ungroup()
+
+df_panc_code
+```
+
+
+```{r}
+df_panc_code <- df_panc_code %>%
+  mutate(TX = case_when(# LOC == "Middle" ~ "",
+                        LOC == "Total" ~ "",
+                        .default = TX))
+```
+
+```{r}
+df_panc_code %>%
+  rename(Class_code = "CLASS_code",
+         Pancreatectomy = "LOC",
+         Approach = "TX",
+         Procedure_code = "RN_1") %>%
+  write.xlsx("../table/TableS2.xlsx")
+```
+
+```{r}
+# 160036910	DUPAN-2	120		
+# 160117010	SPan-1
+
+code_tm <- c("160036910",
+               "160117010")
+
+df_panc_tm <- df_test_mon_reg %>%
+   mutate(PRO_name = stringi::stri_trans_general(PRO_name, "Fullwidth-Halfwidth")) %>%
+  filter(PRO_code %in% code_tm) %>%
+  mutate(TX = PRO_name)
+
+```
+
+```{r}
+df_panc_tm %>%
+  distinct(PRO_code, .keep_all = TRUE) %>%
+  select(CLASS_code, CLASS_name, PRO_code, PRO_name) %>%
+  mutate(CLASS_name = "Tumour marker") %>%
+  rename_with(.cols = c(starts_with("CLASS"), starts_with("PRO")),
+              .fn = str_to_sentence) %>%
+  write.xlsx("../table/TableS3.xlsx")
+```

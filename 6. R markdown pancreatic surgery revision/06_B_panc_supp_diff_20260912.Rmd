@@ -1,0 +1,336 @@
+---
+title: "Pancreatic cancer"
+output: html_document
+date: "2026-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+library(fpp3)
+
+library(scales)
+library(glue)
+library(ggtext)
+library(patchwork)
+library(ggh4x)
+
+library(cowplot)
+library(pals)
+
+library(rkt)
+```
+
+
+```{r}
+# make df folder
+
+#dir.create("../df/long", showWarnings = TRUE, recursive = FALSE, #mode = "0777")
+```
+
+
+
+```{r}
+df_surg_dem <- readRDS("../df/dem/df_surg_dem_reg")
+```
+
+```{r}
+df_surg_prf <- readRDS("../df/prf/df_surg_prf_reg")
+```
+
+```{r}
+df_inj_dem <- readRDS("../df/dem/df_inj_dem_reg")
+```
+
+
+```{r}
+df_pop_dem <- readRDS("../rds/pop/dem/df_pop_dem")
+```
+
+
+```{r}
+df_surg_dem %>% count(YEAR_str)
+```
+
+```{r}
+df_surg_dem %>% filter(is.na(TOTAL)) %>% nrow()
+```
+
+
+```{r}
+df_surg_dem %>% count(SHEET, YEAR_str)
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+  
+```
+
+```{r}
+df_inj_dem <- df_inj_dem %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  mutate(AGE = str_replace_all(AGE, "_", "-"))
+```
+
+# panc
+
+```{r}
+df_panc_dem <- df_surg_dem %>% 
+  filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Laparoscopic",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code %in% c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Enucleation")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Enucleation")))
+```
+
+```{r}
+df_panc_dem  %>% count(LOC)
+```
+
+
+```{r}
+df_panc_dem %>% count(TX)
+```
+
+
+```{r}
+df_panc_dem_total <- df_panc_dem  %>%
+  distinct(YEAR, PRO_name, .keep_all = TRUE) %>%
+  group_by(YEAR) %>%
+  summarise(SUM_total = sum(TOTAL)) 
+
+df_panc_dem_total
+```
+
+```{r}
+df_panc_dem_value <- df_panc_dem %>%
+  group_by(YEAR) %>%
+  summarise(SUM_value = sum(VALUE)) 
+
+df_panc_dem_value 
+```
+
+```{r}
+df_panc_dem_dif <- df_panc_dem_total %>%
+  left_join(df_panc_dem_value,
+            by = join_by(YEAR)) %>%
+  mutate(DIF = (SUM_value - SUM_total)/SUM_total * 100)  %>%
+  mutate(DIF = round(DIF, digits = 1))
+
+df_panc_dem_dif
+```
+
+
+# prefecture
+
+```{r}
+df_surg_prf <- df_surg_prf %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(VALUE = replace_na(VALUE, 0))
+```
+
+
+
+```{r}
+df_panc_prf  <- df_surg_prf  %>% 
+  filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Laparoscopic",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code %in% c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Enucleation")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Enucleation")))
+```
+
+```{r}
+df_panc_prf  %>% count(LOC)
+```
+
+```{r}
+df_panc_prf %>% count(TX)
+```
+
+
+```{r}
+df_panc_prf_total <- df_panc_prf  %>%
+  distinct(YEAR, PRO_name, .keep_all = TRUE) %>%
+  group_by(YEAR) %>%
+  summarise(SUM_total = sum(TOTAL)) 
+
+df_panc_prf_total
+```
+
+```{r}
+df_panc_prf_value <- df_panc_prf %>%
+  group_by(YEAR) %>%
+  summarise(SUM_value = sum(VALUE)) 
+
+df_panc_prf_value
+```
+
+```{r}
+df_panc_prf_dif <- df_panc_prf_total %>%
+  left_join(df_panc_prf_value,
+            by = join_by(YEAR)) %>%
+  mutate(DIF = (SUM_value - SUM_total)/SUM_total * 100) %>%
+  mutate(DIF = round(DIF, digits = 1))
+
+df_panc_prf_dif 
+```
+
+```{r}
+df_panc_prf_dif %>%
+  arrange(desc(DIF))
+```
+
+
+```{r}
+df_panc_dif <- df_panc_dem_dif %>%
+  left_join(df_panc_prf_dif %>% select(!SUM_total),
+            by = join_by(YEAR),
+            suffix = c("_dem", "_prf"))
+            
+df_panc_dif            
+```
+
+
+```{r}
+df_panc_dif <- df_panc_dif %>%
+  mutate(across(starts_with("SUM"), ~ scales::comma(.x))) %>%
+  mutate(across(starts_with("DIF"), ~ formatC(.x, digits = 2, format = "fg", flag = "#"))) %>%
+  mutate(across(starts_with("DIF"), ~ str_remove(.x, "\\.$"))) %>%
+  mutate(across(starts_with("DIF"), ~ str_replace(.x, "-", "−")))
+  
+df_panc_dif 
+```
+
+
+```{r}
+df_panc_dif %>%
+  rename(Year = "YEAR") %>%
+  write.xlsx("../table/TableS4.xlsx")
+```
+
+# check for 2017
+
+```{r}
+df_panc_dif_2017 <- df_panc_prf %>%
+  filter(YEAR == "2017") %>%
+  group_by(CLASS_code, PRO_code, PRO_name) %>%
+  summarise(SUM_value = sum(VALUE)) %>%
+  left_join(df_panc_prf %>%
+              filter(YEAR == "2017") %>%
+              ungroup() %>%
+              distinct(PRO_code, SHEET, .keep_all = TRUE) %>%
+              select(PRO_code, TOTAL),
+            by = join_by(PRO_code))  %>%
+  ungroup()
+
+
+df_panc_dif_2017
+```
+
+```{r}
+df_panc_prf %>%
+  filter(YEAR == "2017" & PRO_code == "150296910") %>% 
+  select(SHEET, PRO_name, TOTAL, VALUE) %>% View()
+```
+
+
+```{r}
+df_panc_dif_2017 <- df_panc_dif_2017 %>%
+  mutate(DIF = (SUM_value - TOTAL)/TOTAL * 100 ) %>%
+  mutate(DIF = formatC(DIF, digits = 2, format = "fg", flag = "#")) %>%
+  mutate(DIF = str_remove(DIF, "\\.$")) %>%
+  mutate(DIF = str_replace(DIF, "-", "−")) %>%
+  ungroup()
+
+df_panc_dif_2017 
+```
+
+
+```{r}
+df_panc_dif_2017 <- df_panc_dif_2017 %>%
+  mutate(across(c(SUM_value, TOTAL), ~ scales::comma(.x)))
+
+df_panc_dif_2017
+```
+
+
+```{r}
+df_panc_dif_2017 <- df_panc_dif_2017 %>%
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Disal",
+                         str_detect(PRO_name, "膵全摘") ~ "Total",
+                         str_detect(PRO_name, "膵中央切除") ~ "Middle",
+                         str_detect(PRO_name, "膵腫瘍摘出") ~ "Enucleation")) %>%
+  
+    mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Lap",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "") ) %>%
+  
+  mutate(DES = case_when(str_detect(PRO_name, "脾同時") ~ "splenectomy",
+                         str_detect(PRO_name, "リンパ節・神経叢郭清") ~ "dissection of lymph nodes\nand/or nerve plexus",
+                         str_detect(PRO_name, "周辺臓器の合併切除") ~ "concomitant adjacent\norgan resection",
+                         str_detect(PRO_name, "血行再建") ~ "vascular reconstruction",
+                         str_detect(PRO_name, "脾同時") ~ "splenectomy",
+                         str_detect(PRO_name, "膵頭十二指腸切除術") ~ "pancreaticoduodenectomy",
+                         str_detect(PRO_name, "十二指腸温存膵頭切除術") ~ "duodenum-preserving\npancreatic head resection",
+                         .default = ""
+                         ))
+
+df_panc_dif_2017
+```
+
+```{r}
+df_panc_dif_2017 %>%
+  mutate(TX = if_else(TX != "", paste0(" (", TX, ")"), TX )) %>%
+  mutate(LOC = paste0(LOC, TX)) %>%
+  select(CLASS_code, PRO_code, LOC, DES, TOTAL, SUM_value, DIF) %>%
+  rename_with(.cols = ends_with("_code"),
+              .fn = str_to_sentence) %>% 
+  rename(Procedure_code = "Pro_code") %>%
+  write.xlsx("../table/TableS7.xlsx")
+```
+
+
+```{r}
+df_panc_total_2017 %>%
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Disal",
+                         str_detect(PRO_name, "膵全摘") ~ "Total",
+                         str_detect(PRO_name, "膵中央切除") ~ "Middle",
+                         str_detect(PRO_name, "膵腫瘍摘出") ~ "Enucleation",
+                         )) %>%
+  group_by(LOC) %>%
+  summarise(SUM_value = sum(SUM_value),
+            SUM_total = sum(TOTAL)) %>%
+  mutate(DIF = (SUM_value - SUM_total)/SUM_total * 100)
+```

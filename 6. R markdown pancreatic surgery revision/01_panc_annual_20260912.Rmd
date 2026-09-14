@@ -1,0 +1,991 @@
+---
+title: "Pancreatic cacner"
+output: html_document
+date: "2026-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+
+library(readxl)
+library(openxlsx)
+library(openxlsx2)
+
+library(modifiedmk)
+
+library(fpp3)
+
+library(ggtext)
+library(patchwork)
+library(cowplot)
+```
+
+
+```{r}
+# make df folder
+
+#dir.create("../df/long", showWarnings = TRUE, recursive = FALSE, #mode = "0777")
+```
+
+```{r}
+# make df folder
+
+dir.create("../table", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+```{r}
+df_surg_dem <- readRDS("../df/dem/df_surg_dem_reg")
+```
+
+```{r}
+#df_inj_dem <- readRDS("../df/dem/df_inj_dem_reg")
+```
+
+```{r}
+df_inc_prf_long <- readRDS("../rds/cancer/df_inc_panc_long.RDS")
+```
+
+
+```{r}
+df_surg_dem %>% count(YEAR_str)
+```
+
+```{r}
+df_surg_dem %>% filter(is.na(TOTAL)) %>% nrow()
+```
+
+
+```{r}
+df_surg_dem %>% count(SHEET, YEAR_str)
+```
+
+```{r}
+df_surg_dem_total <- df_surg_dem %>%
+  distinct(FILE, SHEET, YEAR_str, PRO_code, .keep_all = TRUE) %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+  
+```
+
+```{r}
+ df_surg_dem_total %>% 
+  filter(str_detect(CLASS_code, "^K702|^K703")) %>% View()
+```
+
+```{r}
+ df_surg_dem_total %>% 
+  filter(str_detect(CLASS_code, "^K702|^K703")) %>% View()
+```
+
+```{r}
+ df_surg_dem_total %>% 
+  filter(str_detect(CLASS_code, "^K700|^K702|^K703")) %>% count(CLASS_code, CLASS_name)
+```
+
+
+```{r}
+# 702 body and tail
+# 703 head
+# 704 total 全摘
+
+df_panc <- df_surg_dem_total %>% 
+  filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Lap",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code %in% c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Enucleation")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Lap", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Enucleation")))
+```
+
+```{r}
+df_bil <- df_surg_dem_total %>% 
+  filter(CLASS_code == "K677" & PRO_code != "150429310") %>%
+  group_by(YEAR) %>%
+  summarise(SUM = sum(TOTAL))
+
+df_bil
+```
+
+
+```{r}
+df_panc_all <- df_panc %>%
+  group_by(YEAR, LOC) %>%
+  summarise(SUM = sum(TOTAL)) %>%
+  bind_rows(df_panc %>%
+              group_by(YEAR) %>%
+              summarise(SUM = sum(TOTAL)) %>%
+              mutate(LOC = "All")) %>%
+  mutate(LOC = factor(LOC, levels = c("All",
+                                      "Head",
+                                      "Distal",
+                                      "Total",
+                                      "Middle",
+                                      "Enucleation"))) %>%
+  mutate(YEAR = as.numeric(YEAR))
+```
+
+```{r}
+df_panc_all
+```
+
+
+```{r}
+mmky_panc_all <- df_panc_all %>%
+ nest(data = -LOC) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$SUM)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope")
+  )
+
+mmky_panc_all
+```
+
+
+```{r}
+
+p1_a1 <- df_panc_all %>%
+  mutate(label = case_when(YEAR %in% c(2014, 2024) & !(LOC %in% c("Middle", "Enucleation")  )~ scales::comma(SUM),
+                           .default = NA)) %>%
+
+  mutate(hjust = case_when(YEAR == 2014 & LOC == "All" ~ 0,
+                           YEAR == 2014 & LOC != "All" ~ 0,
+                       YEAR == 2024 ~ 0.5,
+                       .default = NA)) %>%
+  
+  mutate(vjust = case_when(YEAR == 2014 & LOC == "All" ~ 1,
+                           YEAR %in% c(2014, 2024) ~ 0,
+                           .default = NA)) %>%
+  
+  mutate(y = case_when(YEAR == 2014 & LOC == "All" ~ SUM - 20000/20,
+                       YEAR %in% c(2014, 2024) ~ SUM + 20000/20,
+                           .default = NA)) %>%
+  
+  ggplot()+
+  geom_line(aes(YEAR, SUM, group = LOC, colour = LOC), linewidth = 0.3)+
+  geom_point(aes(YEAR, SUM, colour = LOC), size = 1)+
+  geom_text(aes(x = YEAR, y = y, hjust = hjust, vjust = vjust, 
+                label = label),
+            size = 2.8, colour = "black")+
+  scale_colour_manual(values = c("#8c564b",
+                                 "#1f77b4",
+                                 "#d62728",
+                                 "#bcbd22",
+                                 "#e377c2",
+                                 "#17becf"),
+                          labels = c("All",
+                                     "Head",
+                                     "Distal",
+                                     "Total",
+                                     "Middle",
+                                     "Enucleation"),
+                    name = "Pancreatectomy")+
+  scale_x_continuous(breaks = seq(2014, 2024, 2),
+                     limits = c(2014, 2024))+
+  
+  scale_y_continuous(breaks = seq(0, 20000, 5000),
+                     limits = c(0, 20000),
+                     label = scales::label_comma())+
+  guides(color = guide_legend(nrow = 1) )+
+  coord_cartesian(clip = "off")+
+  labs(x = "Year",
+       y = "Count (n)",
+       tag = "a")+
+       #title = "Pancreatomy")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.justification = c(0, 0.5),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.background = element_blank(),
+        plot.margin = margin(1, 5, 1, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 1, 0, "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_a1
+```
+
+
+```{r}
+# proportion
+
+p1_a2 <- df_panc_all %>%
+  filter(LOC != "All") %>%
+  mutate(LOC = factor(LOC,
+                      levels = c("Enucleation",
+                                 "Middle",
+                                 "Total",
+                                 "Distal",
+                                 "Head"))) %>%
+  group_by(YEAR) %>%
+  mutate(ALL = sum(SUM)) %>%
+  mutate(PCT = SUM/ALL * 100) %>%
+  mutate(label = round(PCT)) %>%
+  mutate(label = na_if(label, LOC == "Total")) %>%
+  mutate(y = case_when(LOC == "Head" ~ 30,
+                       LOC == "Distal" ~80,
+                       .default = NA)) %>%
+  mutate(YEAR = as.character(YEAR)) %>%
+  ggplot(aes(YEAR, PCT, fill = LOC))+
+  geom_col(width = 0.75)+
+  scale_fill_manual(values = c("#17becf",
+                                 "#e377c2",
+                                 "#bcbd22",
+                                "#d62728",
+                                 "#1f77b4"),
+                    name = "Pancreatectomy")+
+  geom_text(aes(y = y, label = label),
+            size = 2.8, colour ="white")+
+  labs(x = "Year",
+       y = "Proportion (%)")+
+  scale_x_discrete(
+               #    limits = c(2014, 2024) %>% as.character(),
+                   breaks = seq(2014, 2024, 2))+
+  scale_y_continuous(expand  = c(0, 0),
+                     breaks = seq(0, 100, 25))+
+  theme_classic()+
+   theme(# plot.tag = element_text(size = 12, colour = "black", face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = margin(1, 0, 1, 5, unit = "mm"),
+        legend.position = "none")
+
+p1_a2
+```
+
+
+```{r}
+df_panc_tx <- df_panc %>%
+  group_by(YEAR, TX) %>%
+  summarise(SUM = sum(TOTAL)) %>%
+  bind_rows(df_panc %>%
+              group_by(YEAR) %>%
+              summarise(SUM = sum(TOTAL)) %>%
+              mutate(TX = "All")) %>%
+  mutate(YEAR = as.numeric(YEAR)) %>%
+  mutate(TX = factor(TX, levels = c("All", "Open", "Lap", "Robotic"))) %>%
+  ungroup() %>%
+  mutate(YEAR = as.numeric(YEAR))
+```
+
+```{r}
+p1_d1 <- df_panc_tx  %>%
+  filter(TX != "All") %>%
+  
+  mutate(label = case_when(YEAR %in% c(2014, 2024) ~ scales::comma(SUM),
+                           .default = NA)) %>%
+  
+  mutate(hjust= case_when(YEAR == 2014 ~ 0,
+                          YEAR == 2024 ~ 0.5,
+                          .default = NA)) %>%
+  
+  mutate(vjust = case_when(YEAR == 2014 & TX == "Open" ~ 1,
+                           YEAR == 2024 & TX == "Lap" ~ 1,
+                           YEAR %in% c(2014, 2024) ~ 0,
+                           .default = NA)) %>%
+  
+  mutate(y = case_when(YEAR == 2024 & TX == "Lap"  ~ SUM - 16000/20,
+                       YEAR == 2024 & TX == "Robotic"  ~ SUM + 16000/20,
+                       YEAR == 2024 & TX == "Open" ~ SUM + 16000/20,
+                       YEAR == 2014 & TX == "Open" ~ SUM - 16000/20,
+                       YEAR == 2014 ~ SUM + 16000/20,
+                       .default = NA)) %>%
+  
+  ggplot()+
+  geom_line(aes(YEAR, SUM, colour = TX, group = TX),
+            linewidth = 0.3)+
+  geom_point(aes(YEAR, SUM, colour = TX),
+             size = 1)+
+  geom_text(aes(YEAR, y = y, label = label,
+                hjust = hjust, vjust = vjust),
+            size = 2.8, colour = "black" )+
+  scale_colour_manual(values = c("#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Pancreatectomy",
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"))+
+  scale_x_continuous(breaks = seq(2014, 2024, 2),
+                     limits = c(2014, 2024))+
+  
+   scale_y_continuous(breaks = seq(0, 16000, 4000),
+                     limits = c(0, 16000),
+                     
+                     label = scales::label_comma())+
+  coord_cartesian(clip = "off")+
+  labs(x = "Year",
+       y = "Count (n)",
+       tag = "d")+
+      # title = "Pancreatomy")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.justification = c(0, 0.5),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.background = element_blank(),
+        plot.margin = margin(1, 5, 1, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 1, 0, "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_d1 
+```
+
+```{r}
+df_label_d2 <- df_panc_tx  %>%
+  as_tibble() %>%
+  filter(TX != "All") %>%
+  group_by(YEAR) %>%
+  mutate(PCT = SUM/sum(SUM) * 100 ) %>%
+  mutate(TX = factor(TX, levels = c( "Robotic", "Lap", "Open"))) %>%
+  arrange(TX) %>%
+  mutate(CS = cumsum(PCT)) %>%
+  mutate(HT = CS - PCT* 1/2) %>%
+  mutate(label = case_when( TX == "Open" |
+                              TX == "Lap" & YEAR >= 2018 |
+                              TX == "Robotic" & YEAR %in% c(2023, 2024) ~ round(PCT),
+                            .default = NA)) %>%
+  
+  mutate(vjust = 0.5) %>%
+  
+  mutate(y = case_when(TX == "Open" ~ 50,
+                       TX == "Lap" ~ HT,
+                       TX == "Robotic" ~ 5,
+                       .default = NA)) %>%
+  
+  mutate(colour = case_when(TX %in% c("Open", "Robotic") ~ "a",
+                            TX == "Lap" ~ "b"))
+
+df_label_d2
+```
+
+
+```{r}
+p1_d2 <- df_panc_tx  %>%
+  as_tibble() %>%
+  filter(TX != "All") %>%
+  group_by(YEAR) %>%
+  mutate(PCT = SUM/sum(SUM) * 100 ) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Lap", "Robotic"))) %>%
+  mutate(YEAR = as.character(YEAR)) %>%
+  ggplot()+
+  geom_col(aes(YEAR, PCT, fill = TX),
+           width = 0.75, position = "stack")+
+  geom_text(data = df_label_d2,
+            aes(x = YEAR %>% as.character(),
+                y = y,
+                label = label,
+                vjust = vjust,
+                colour = colour),
+            hjust = 0.5,
+            size = 2.8,
+            inherit.aes = FALSE)+
+  scale_colour_manual(values = c("white",  "black"))+
+  scale_fill_manual(values = c( "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Pancreatectomy",
+                    breaks = c("Open", "Lap", "Robotic"),
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"))+
+   scale_x_discrete(
+                   breaks = seq(2014, 2024, 2) %>% as.character())+
+  
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 100, 25)) +
+  labs(x = "Year",
+       y = "Proportion (%)")+
+  theme_classic()+
+  theme(
+        axis.title = element_text(size = 8, colour = "black", face = "bold", hjust = 0.5),
+        axis.text = element_text(size = 8, colour = "black", hjust = 0.5),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+         plot.margin = margin(1, 0, 1, 5, unit = "mm"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "none")
+
+p1_d2
+```
+
+
+```{r}
+df_panc_loc <- df_panc %>%
+  group_by(YEAR, TX, LOC) %>%
+  summarise(SUM = sum(TOTAL)) %>%
+  ungroup() %>%
+  mutate(YEAR = as.numeric(YEAR))
+  
+df_panc_loc 
+```
+
+```{r}
+p1_b1 <- df_panc_loc  %>%
+  filter(LOC == "Head") %>%
+  mutate(label = case_when(YEAR %in% c(2014, 2024) ~ scales::comma(SUM),
+                           .default = NA)) %>%
+  
+  mutate(hjust = case_when(YEAR == 2014 ~ 0,
+                           YEAR == 2024 ~ 0.5,
+                           .default = NA)) %>%
+  
+  mutate(vjust = case_when(YEAR == 2014 & TX %in% c( "Open") ~ 1,
+                       YEAR == 2024 & TX %in% c( "Open") ~ 0,
+                       
+                       YEAR == 2024 & TX %in% c("Lap", "Robotic") ~ 0, 
+                       .default = NA)) %>%
+  
+  mutate(y = case_when(YEAR == 2014 & TX %in% c( "Open") ~ SUM - 12000/20,
+                       YEAR == 2024 & TX %in% c( "Open") ~ SUM + 12000/20,
+                       
+                       YEAR == 2024 & TX %in% c("Lap") ~ SUM + 12000/20 * 2, 
+                       YEAR == 2024 & TX %in% c("Robotic") ~ SUM + 12000/20 * 3, 
+                       .default = NA)) %>%
+  
+  ggplot() +
+  geom_line(aes(YEAR, SUM, colour = TX, group = TX),
+            linewidth = 0.3) +
+  geom_point(aes(YEAR, SUM, colour = TX),
+             size = 1)+
+  geom_text(aes(x = YEAR, y = y, label = label,
+                hjust = hjust, vjust = vjust),
+            size = 2.8, colour = "black")+
+  scale_colour_manual(values = c( "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Pancreatic head",
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"))+
+  scale_x_continuous(breaks = seq(2014, 2024, 2),
+                     limits = c(2014, 2024))+
+  
+  scale_y_continuous(limits = c(0, 12000),
+                     breaks = seq(0, 12000, 3000),
+                     labels = scales::label_comma())+
+  coord_cartesian(clip = "off")+
+  labs(x = "Year",
+       y = "Count (n)",
+       tag = "b")+
+       #title = "Pancreatomy")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.justification = c(0, 0.5),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.background = element_blank(),
+        plot.margin = margin(1, 5, 1, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 1, 0, "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_b1 
+```
+
+
+```{r}
+df_label_b2 <- df_panc_loc %>%
+  filter(LOC == "Head") %>%
+  group_by(YEAR) %>%
+  mutate(TOTAL = sum(SUM)) %>%
+  mutate(PCT = SUM/TOTAL * 100) %>%
+  mutate(TX = factor(TX, levels = c("Robotic", "Lap", "Open"))) %>%
+  arrange(YEAR, TX) %>%
+  group_by(YEAR) %>%
+  mutate(CS = cumsum(PCT)) %>%
+  mutate(YEAR = as.character(YEAR))
+
+df_label_b2
+```
+
+
+```{r}
+p1_b2 <- df_panc_loc %>%
+  filter(LOC == "Head") %>%
+  group_by(YEAR) %>%
+  mutate(TOTAL = sum(SUM)) %>%
+  mutate(PCT = SUM/TOTAL * 100) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Lap", "Robotic"))) %>%
+  mutate(label = case_when(TX == "Open" ~ round(PCT),
+                           .default = NA)) %>%
+  mutate(y =  case_when(TX == "Open" ~ 50,
+                           .default = NA)) %>%
+  mutate(YEAR = as.character(YEAR)) %>%
+  ggplot(aes(YEAR, PCT, fill = TX))+
+  geom_col(width = 0.75, position = "stack")+
+  geom_text(aes(y = y, label = label),
+            size= 2.8, colour = "white")+
+  
+  geom_text(data = df_label_b2 %>% filter(YEAR == 2024 & TX == "Robotic"),
+            aes(YEAR
+                , CS/2, label = round(CS)),
+            size = 2.8, colour = "white",
+            inherit.aes = FALSE) +
+  
+   scale_fill_manual(values = c(
+                                 "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Pancreatic\nhead cancer",
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"),
+                    breaks = c("Open",
+                               "Lap",
+                               "Robotic"))+
+    scale_x_discrete(
+                   breaks = seq(2014, 2024, 2) %>% as.character())+
+  
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 100, 25)) +
+  labs(x = "Year",
+       y = "Proportion (%)")+
+      # tag = "E")+
+       #title = "Pancreatomy")+
+  theme_classic()+
+  theme(# plot.tag = element_text(size = 12, colour = "black", face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+         plot.margin = margin(1, 0, 1, 5, unit = "mm"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "none")
+
+
+p1_b2
+```
+
+
+
+```{r}
+p1_c1 <- df_panc_loc %>%
+  filter(LOC == "Distal") %>%
+  mutate(label = case_when(YEAR %in% c(2014, 2024) ~ scales::comma(SUM),
+                           .default = NA)) %>%
+  
+  mutate(hjust = case_when(YEAR == 2014 ~ 0,
+                           YEAR == 2024 & TX == "Robotic" ~ 0.5,
+                           YEAR == 2024 ~ 0.5,
+                           .default = NA)) %>%
+  
+  mutate(vjust = case_when(YEAR == 2014 & TX == "Open" ~ 1,
+                           YEAR == 2014 & TX == "Lap" ~ 0,
+                           YEAR == 2024 & TX == "Robotic" ~ 1,
+                           .default = 0)) %>%
+  
+  mutate(x  = case_when(hjust == 1 ~ YEAR - 10/50,
+                        .default = YEAR)) %>%
+  
+  
+  mutate(y  = case_when(YEAR == 2014 & TX == "Open" ~ SUM - 5000/20,
+                        YEAR == 2024 & TX == "Robotic" ~ SUM - 5000/20,
+                        !is.na(x) ~ SUM + 5000/20,
+                        .default = SUM)) %>%
+  
+  ggplot() +
+  geom_line(aes(YEAR, SUM, colour = TX, group = TX),
+            linewidth = 0.3) +
+  geom_point(aes(YEAR, SUM, colour = TX),
+             size = 1)+
+  geom_text(aes(x = x, y = y, label = label,
+                hjust = hjust, vjust = vjust),
+            size = 2.8, colour = "black") +
+  scale_colour_manual(values = c( "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Distal pancreas",
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"))+
+  
+  scale_x_continuous(breaks = seq(2014, 2024, 2),
+                     limits = c(2014, 2024))+
+  
+  scale_y_continuous(limits = c(0, 5000),
+                     breaks = seq(0, 5000, 1000),
+                     labels = scales::label_comma())+
+  coord_cartesian(clip = "off")+
+  labs(x = "Year",
+       y = "Count (n)",
+       tag = "c")+
+       #title = "Pancreatomy")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black", hjust = 0.5),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.justification = c(0, 0.5),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.background = element_blank(),
+        legend.margin = margin(0, 0, 1, 0, unit = "mm"),
+        plot.margin = margin(1, 5, 1, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_c1
+```
+
+
+```{r}
+df_label_c2 <- df_panc_loc %>%
+  as_tibble() %>%
+  filter(LOC == "Distal") %>%
+  group_by(YEAR) %>%
+  mutate(TOTAL = sum(SUM)) %>%
+  mutate(PCT = SUM/TOTAL * 100) %>%
+  mutate(TX = factor(TX, levels = c("Robotic", "Lap", "Open"))) %>%
+  arrange(YEAR, TX) %>%
+  mutate(CS = cumsum(PCT)) %>%
+  mutate(HT = CS - PCT/2) %>%
+  
+  mutate(label = case_when(TX == "Open"  |
+                       TX == "Lap" & YEAR <= 2019 |
+                       TX == "Lap" & YEAR >= 2020 |
+                       TX == "Robotic" & YEAR %in% c(2022:2024) ~ round(PCT),
+                       .default = NA)) %>%
+  
+  mutate(y = case_when(TX == "Open" ~ 75,
+                       TX == "Lap" & YEAR <= 2019 ~ 5,
+                       TX == "Lap" & YEAR >= 2020 ~ HT,
+                       TX == "Robotic" & YEAR %in% c(2022:2024) ~ 5)) %>%
+  mutate(vjust = case_when(TX == "Open" ~ 0.5,
+                       TX == "Lap" & YEAR <= 2019 ~ 0.5,
+                       TX == "Lap" & YEAR >= 2020 ~ 0.5,
+                       TX == "Robotic" & YEAR %in% c(2022:2024) ~ 0.5,
+                       .default = NA)) %>%
+  mutate(colour = case_when(TX == "Lap" ~ "a",
+                            .default = "b")) %>%
+  mutate(TX = factor(TX, levels = c("Robotic", "Lap", "Open"))) %>%
+  mutate(YEAR = as.character(YEAR))
+
+df_label_c2 
+```
+
+
+```{r}
+p1_c2 <- df_panc_loc %>%
+  filter(LOC == "Distal") %>%
+  group_by(YEAR) %>%
+  mutate(TOTAL = sum(SUM)) %>%
+  mutate(PCT = SUM/TOTAL * 100) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Lap", "Robotic"))) %>%
+  mutate(YEAR = as.character(YEAR)) %>%
+  
+  ggplot(aes(YEAR, PCT, fill = TX))+
+  geom_col(width = 0.75, position = "stack")+
+  
+  geom_text(data = df_label_c2,
+            aes(x = YEAR, 
+                y =  y,
+                label = label,
+                vjust = vjust, colour = colour),
+            size = 2.8,
+            inherit.aes = FALSE) +
+  scale_colour_manual(values = c( "black", "white"))+
+   scale_fill_manual(values = c(
+                                "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                    name = "Distal pancreas",
+                    labels = c(
+                               "Open",
+                               "Laparoscopic",
+                               "Robotic"),
+                    breaks = c("Open",
+                               "Lap",
+                               "Robotic"))+
+  scale_x_discrete(
+                   breaks = seq(2014, 2024, 2) %>% as.character())+
+  
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 100, 25))+
+  labs(x = "Year",
+       y = "Proportion (%)")+
+       #title = "Pancreatomy")+
+  theme_classic()+
+  theme(# plot.tag = element_text(size = 12, colour = "black", face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+         plot.margin = margin(1, 0, 1, 5, unit = "mm"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "none")
+
+
+p1_c2
+```
+
+
+```{r}
+p1 <- p1_a1 + p1_a2 +
+  p1_b1+
+  patchwork::free(p1_b2, type = "label") + 
+  p1_c1 + 
+  patchwork::free(p1_c2, type = "label") + 
+  p1_d1 + 
+  patchwork::free(p1_d2, type = "label") + 
+  plot_layout(design = "
+  AB
+  CD
+  EF
+  GH")
+
+p1
+```
+
+```{r}
+ggsave("../figure/Fig1.pdf", units = "mm", height = 234, width = 174)
+```
+
+
+```{r}
+# t1 loc
+# t2 head
+# t3 distal
+# t4 open/lap/robotic
+```
+
+```{r}
+t1_1 <- df_panc_all %>%
+  group_by(LOC) %>%
+#  mutate(N = n()) %>%
+ nest(data = -c(LOC)) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$SUM)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope"),
+    vari = map_dbl(model, "new.variance")
+  ) %>%
+  arrange(LOC) %>%
+  mutate(TX = "")
+
+t1_1
+```
+
+
+```{r}
+t1_2 <- df_panc_loc %>%
+  filter(LOC == "Head") %>%
+  nest(data = -c(LOC, TX )) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$SUM)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope"),
+    vari = map_dbl(model, "new.variance")
+  ) %>%
+  arrange(LOC)
+
+t1_2 
+```
+
+```{r}
+t1_3 <- df_panc_loc %>%
+  filter(LOC == "Distal") %>%
+  nest(data = -c(LOC, TX )) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$SUM)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope"),
+    vari = map_dbl(model, "new.variance")
+  ) %>%
+  arrange(LOC)
+
+t1_3 
+```
+
+```{r}
+t1_4 <- df_panc_tx %>%
+  nest(data = -c(TX )) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$SUM)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope"),
+    vari = map_dbl(model, "new.variance")
+  ) %>%
+  arrange(TX) %>%
+  mutate(LOC = "All")
+
+t1_4
+```
+
+```{r}
+t1 <- t1_1 %>%
+  bind_rows(t1_2) %>%
+  bind_rows(t1_3) %>%
+  bind_rows(t1_4) %>%
+  relocate(TX, .before = "LOC") %>%
+  mutate(ID = paste0(LOC, "_", TX))
+
+t1
+```
+
+```{r}
+t1 %>% unnest(data)
+```
+
+```{r}
+t1_save <- t1 %>%
+  select(LOC, TX, slope, tau, p_value) %>%
+  mutate(across(c(slope, tau), ~ formatC(.x, digits = 2, format = "fg", flag = "#") %>% 
+                  str_remove("\\.$") %>%       
+                  str_replace_all("-", "−") %>% str_trim(side = "both")))
+
+t1_save 
+```
+
+
+```{r}
+get_exp <- function(x){
+
+  # if na return ""
+  
+  if(is.nan(x) | x > 0.001){
+    return("")
+  }
+  
+  else {
+    
+    p <- formatC(x, digits = 2, format = "e", flag = "#")
+    
+    ex <- p %>% str_extract("(?<=e).+") %>% str_remove_all("(?<=\\-)0+") %>%
+      str_replace_all("-", "−")
+    
+    return(ex)
+    }
+}
+
+get_expv <- Vectorize(get_exp)
+```
+
+```{r}
+get_num <- function(x){
+  
+  if (is.nan(x)){
+      return("NA")
+    }
+  
+  else if (x > 0.001) {
+    p <- formatC(x, digits = 2, format = "fg", flag = "#")
+    
+    return(p)
+  }
+  
+  else{
+    p <- formatC(x, digits = 1, format = "e", flag = "#")
+    
+    num <- p %>% str_extract(".+(?=e)")
+    
+    num <- str_c(num, "×10")
+      
+    return(num)
+  }
+}
+
+get_numv <- Vectorize(get_num)
+```
+
+```{r}
+symbol_p <- function(x){
+  if (is.nan(x)){
+    return("")
+  }
+  else if (x < 0.001){
+    return("***")
+    }
+  else if (x < 0.01){
+    return("**")
+  }
+  else if (x < 0.05){
+    return("*")
+  }
+  else {
+    return("")
+  }
+}
+
+symbol_pv <- Vectorize(symbol_p)
+```
+
+```{r}
+#t1_mod <- 
+
+wb_1 <- t1_save %>%
+  mutate(p_exp = get_expv(p_value)) %>%
+  mutate(p_num = get_numv(p_value)) %>%
+  mutate(p = purrr::map2(p_num, p_exp, function(x, y){
+    c(fmt_txt(x), fmt_txt(y, vert_align = "superscript")) 
+    }) ) %>%
+  mutate(p_symbol = symbol_pv(p_value))
+
+wb_1
+```
+
+```{r}
+colnames(wb_1)
+```
+
+```{r}
+wb_1 <- wb_1 %>%
+  select(LOC, TX, slope, tau, p, p_symbol)
+
+colnames(wb_1) <- c("Pancreatectomy",
+                    "Approach",
+                    "Slope",
+                    "𝜏",
+                    "Corrected p value",
+                    "")
+
+
+wb_workbook() %>%
+  wb_add_worksheet("Sheet1") %>%
+  wb_add_data(x = wb_1 ) %>%
+  wb_save("../table/Table1.xlsx")
+```
+
