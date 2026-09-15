@@ -1,0 +1,780 @@
+---
+title: "Pancreatic cacner"
+output: html_document
+date: "2026-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+library(openxlsx2)
+
+library(fpp3)
+library(rkt)
+library(modifiedmk)
+
+library(scales)
+library(glue)
+library(ggtext)
+library(patchwork)
+library(ggh4x)
+
+library(cowplot)
+library(pals)
+```
+
+
+```{r}
+# make df folder
+
+#dir.create("../df/long", showWarnings = TRUE, recursive = FALSE, #mode = "0777")
+```
+
+```{r}
+df_surg_dem <- readRDS("../df/dem/df_surg_dem_reg")
+```
+
+```{r}
+df_inj_dem <- readRDS("../df/dem/df_inj_dem_reg")
+```
+
+
+```{r}
+df_pop_dem <- readRDS("../rds/pop/dem/df_pop_dem")
+```
+
+
+```{r}
+df_surg_dem %>% count(YEAR_str)
+```
+
+```{r}
+df_surg_dem %>% filter(is.na(TOTAL)) %>% nrow()
+```
+
+
+```{r}
+df_surg_dem %>% count(SHEET, YEAR_str)
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+  
+```
+
+```{r}
+df_inj_dem <- df_inj_dem %>%
+  rename(YEAR = "YEAR_str") %>%
+  mutate(TOTAL = replace_na(TOTAL, 0))
+```
+
+```{r}
+df_surg_dem <- df_surg_dem %>%
+  mutate(AGE = str_replace_all(AGE, "_", "-"))
+```
+
+
+```{r}
+df_surg_dem <- df_surg_dem  %>%
+  mutate(SEX = case_when(SEX == "M" ~ "Male",
+                         SEX == "F" ~ "Female")) %>%
+  mutate(SEX = factor(SEX, levels = c("Male", "Female")))
+```
+
+
+```{r}
+# check total 
+df_surg_dem %>%
+  filter(str_detect(CLASS_code, "^K704"))  %>%
+  group_by(YEAR) %>%
+  summarise(SUM_value = sum(VALUE)) %>%
+  left_join(df_surg_dem %>%
+              filter(str_detect(CLASS_code, "^K704"))  %>%
+              distinct(PRO_name, YEAR, .keep_all = TRUE) %>%
+              select(YEAR, TOTAL),
+            by = join_by(YEAR)) 
+```
+
+
+
+
+
+# modify pop
+
+```{r}
+df_pop_dem_cat <- df_pop_dem %>%
+  filter(AGE != "total") %>%
+  mutate(AGE = str_remove(AGE, "_")) %>%
+  mutate(AGE = as.numeric(AGE)) %>%
+  mutate(AGE_cat = case_when(AGE %in% 0:49 ~ "0-49",
+                             AGE %in% 50:59 ~ "50-59",
+                             AGE %in% 60:69 ~ "60-69",
+                             AGE %in% 70:79 ~ "70-79",
+                             AGE >= 80 ~ "80-"
+                             ))
+```
+
+
+```{r}
+df_pop_dem_sa <- df_pop_dem_cat %>%
+  group_by(YEAR, AGE_cat) %>%
+  summarise(All = sum(ALL_total),
+            Male = sum(ALL_m),
+            Female = sum(ALL_f)) %>%
+  pivot_longer(cols = c(All, Male, Female),
+               names_to = "SEX",
+               values_to = "POP") %>%
+  ungroup()
+
+
+df_pop_dem_sa  
+```
+
+# panc
+
+```{r}
+df_panc <- df_surg_dem %>% 
+  filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Laparoscopic",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code == c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Partial")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Partial")))
+```
+
+```{r}
+df_panc %>% count(LOC)
+```
+
+
+```{r}
+df_panc %>% count(TX)
+```
+
+
+```{r}
+df_panc_total <- df_panc %>%
+  distinct(YEAR, PRO_name, .keep_all = TRUE) %>%
+  group_by(YEAR) %>%
+  summarise(SUM_total = sum(TOTAL)) 
+
+df_panc_total
+```
+
+```{r}
+df_panc_value <- df_panc %>%
+  group_by(YEAR) %>%
+  summarise(SUM_value = sum(VALUE)) 
+
+df_panc_value
+```
+
+```{r}
+df_panc_total %>%
+  left_join(df_panc_value,
+            by = join_by(YEAR)) %>%
+  mutate(DIF = (SUM_value - SUM_total)/SUM_total * 100) %>%
+  mutate(DIF = round(DIF, digits = 1))
+```
+
+```{r}
+df_panc_sa <- df_panc  %>%
+  mutate(AGE = fct_recode(AGE,
+                          "0-49" = "0-4",
+                          "0-49" = "5-9",
+                          "0-49" = "10-14",
+                          "0-49" = "15-19",
+                          "0-49" = "20-24",
+                          "0-49" = "25-29",
+                          "0-49" = "30-34",
+                          "0-49" = "35-39",
+                          "0-49" = "40-44",
+                          "0-49" = "45-49",
+                          "50-59" = "50-54",
+                          "50-59" = "55-59",
+                          "60-69" = "60-64",
+                          "60-69" = "65-69",
+                          "70-79" = "70-74",
+                          "70-79" = "75-79",
+                          "80-" = "80-84",
+                          "80-" = "85-89",
+                          "80-" = "90-"))
+```
+
+```{r}
+df_panc_tx <- df_panc_sa %>%
+  filter(LOC %in% c("Head", "Distal")) %>%
+  group_by(YEAR, SEX, AGE, TX, LOC) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  bind_rows(df_panc_sa %>%
+              filter(LOC %in% c("Head", "Distal")) %>%
+              group_by(YEAR, AGE, TX, LOC) %>%
+              summarise(SUM = sum(VALUE)) %>%
+              mutate(SEX = "All")) %>%
+  mutate(SEX = factor(SEX, levels = c("All", "Male", "Female"))) %>%
+  mutate(LOC = factor(LOC, levels = c("All", "Head", "Distal"))) %>%
+  ungroup()
+
+```
+
+```{r}
+df_panc_tx
+```
+
+```{r}
+df_panc_tx <- df_panc_tx %>%
+  mutate(ID = paste0(YEAR, "_", SEX, "_", AGE)) %>%
+  left_join(df_pop_dem_sa %>%
+              mutate(ID = paste0(YEAR, "_", SEX, "_", AGE_cat)) %>%
+              select(ID, POP),
+            by = join_by(ID) )
+
+df_panc_tx       
+```
+
+```{r}
+df_panc_tx <- df_panc_tx %>%
+  mutate(ADJ = SUM/POP *10^2) 
+```
+
+```{r}
+df_panc_tx_long <- df_panc_tx %>%
+  pivot_longer(cols = c(SUM , ADJ),
+               names_to = "CAT",
+               values_to = "VALUE")
+```
+
+```{r}
+df_panc_tx_long <- df_panc_tx_long %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal"))) %>%
+  mutate(CAT = factor(CAT, levels = c("SUM", "ADJ")))
+```
+
+
+```{r}
+df_panc_tx_long %>%
+  filter(SEX == "All") %>%
+  group_by(LOC, CAT) %>%
+  summarise(max = max(VALUE)) %>%
+  arrange(LOC, CAT)
+```
+
+
+```{r}
+df_y_scale <- df_panc_tx_long %>%
+  filter(SEX == "All") %>%
+  group_by(LOC, CAT) %>%
+  summarise(MAX = max(VALUE)) %>%
+  arrange(LOC, CAT) %>%
+  mutate(YMAX = case_when(MAX < 2 ~ 2,
+                          MAX < 15 ~ 15,
+                          MAX < 40 ~ 40,
+                          MAX < 300 ~ 300,
+                          MAX < 2000 ~ 2000,
+                          MAX < 5000 ~ 5000)) %>%
+  mutate(n = case_when(YMAX %in% c(2, 40, 2000) ~ 4,
+                       YMAX %in% c(15, 300) ~ 3,
+                       YMAX %in% c(5000) ~ 5)) %>%
+  mutate(YBRK = YMAX/n) %>%
+  
+  mutate(LAB = case_when(CAT == "SUM" ~ "**n**",
+                         CAT == "ADJ" ~ "**n/10<sup>5</sup> people**"))
+
+df_y_scale 
+```
+
+
+```{r}
+list_p1 <- purrr::map2(df_y_scale$LOC[1:4] ,
+                       df_y_scale$CAT[1:4],
+                       function(x, y) {
+                         
+  ylab <- df_y_scale %>% filter(LOC == x & CAT == y) %>% pull(LAB)
+  
+  ymax <- df_y_scale %>% filter(LOC == x & CAT == y) %>% pull(YMAX)
+  
+  ybrk <- df_y_scale %>% filter(LOC == x & CAT == y) %>% pull(YBRK)
+                         
+  df_panc_tx_long %>%
+    filter(SEX == "All") %>%
+    filter(LOC == x & CAT == y) %>%
+    mutate(AGE = str_replace_all(AGE, "-", "–")) %>%
+    mutate(YEAR = as.numeric(YEAR)) %>%
+   ggplot(aes(YEAR, VALUE, group = TX, colour = TX))+
+   geom_line(linewidth = 0.3)+
+   scale_colour_manual(values = c("#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"))+
+  
+  scale_x_continuous(limits = c(2014, 2024),
+                     breaks = seq(2014, 2023, 3))+
+                           
+  scale_y_continuous(limits = c(0, ymax),
+                     breaks = seq(0, ymax, ybrk),
+                     labels = scales::label_comma())+
+  
+  facet_wrap2(vars(AGE) ,
+               nrow = 1,
+            #   scales = "free_y",
+               axes = "all",
+               remove_labels = "all")+
+    
+  guides(colour = guide_legend(override.aes = list(linewidth = 0.5) ) )+
+  
+  labs(y = paste0(x, "<br>(", ylab, ")"))+
+                           
+  theme_classic()+
+  theme(#plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        strip.background = element_blank(),
+        strip.text = element_markdown(size = 8, colour = "black", face = "bold",
+                                    margin = margin(0, 0, 1, 0, "mm")),
+        
+        axis.title.x = element_blank(),
+        axis.title.y = element_markdown(size = 8, colour = "black", face = "bold",
+                                         lineheight = 1.2),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3),
+        axis.ticks = element_line(linewidth = 0.3),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8, colour = "black"),
+
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        
+        
+        legend.position = "inside",
+        legend.position.inside = c(0.01, 1),
+        legend.justification = c(0, 1),
+        legend.background = element_blank(),
+
+        legend.key.height = unit(1, "line"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        plot.margin = margin(1, 0, 1, 0, unit = "mm"),
+        panel.spacing = unit(2, "mm")
+        )
+                       })
+ 
+                        
+```
+
+
+
+```{r}
+for (i in 1:length(list_p1 )){
+  print(list_p1 [[i]])
+}
+```
+
+```{r}
+for (i in 1:length(list_p1 )){
+  assign(paste0("p1_", c("a1","a2", "b1", "b2")[i]), list_p1 [[i]])
+}
+```
+
+```{r}
+p1_a1 <- p1_a1 +
+  labs(tag = "a")+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"))
+
+
+p1_a2 <- p1_a2 +
+  theme(strip.text = element_blank(),
+        legend.position = "none")
+
+p1_b1 <- p1_b1 +
+  labs(tag = "b")+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"))
+
+p1_b2 <- p1_b2 +
+  theme(strip.text = element_blank(),
+        legend.position = "none")
+```
+
+```{r}
+list_p2 <- purrr::map(c("Head", "Distal"), 
+                      function(loc){
+  df_panc_tx_long %>% 
+    filter(SEX == "All") %>%
+    filter(LOC == loc & CAT == "SUM") %>%
+    group_by(YEAR, AGE) %>%
+    mutate(ALL = sum(VALUE)) %>%
+    mutate(PCT = VALUE/ALL * 100) %>%
+    mutate(TX = factor(TX, levels = c("Open",
+                                       "Laparoscopic",
+                                      "Robotic"
+                                     ))) %>%
+    mutate(YEAR = factor(YEAR)) %>%
+    ggplot(aes(YEAR, PCT, fill = TX))+
+    geom_col(width = 0.5, position = "stack")+
+    scale_fill_manual(values = c(
+                                  "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"))+
+  
+  scale_x_discrete(limits = c(2014:2024) %>% as.character(),
+                     breaks = seq(2014, 2023, 3) %>% as.character())+
+    scale_y_continuous(expand = c(0, 0)) +
+    facet_wrap2(vars(AGE),
+                nrow = 1,
+                axes = "all",
+                remove_labels = "all")+
+     labs(
+       x = "Year",
+       y = "**Proportion<br>(%)**")+
+  theme_classic()+
+   theme(
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        strip.text.y = element_blank(),
+        axis.title.x =  element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y =  element_markdown(size = 8, colour = "black", face = "bold",
+                                         lineheight = 1.2),
+        axis.text.x =  element_text(size = 8, colour = "black"),
+        axis.text.y =  element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        
+        legend.title = element_blank(),
+        legend.text =  element_text(size = 8, colour = "black"),  
+        legend.position = "none",
+        legend.background = element_blank(),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.key.height = unit(1, "line"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        plot.margin = margin(1, 0, 0, 0, unit = "mm"),
+        panel.spacing = unit(2, "mm"))
+                      })
+```
+
+
+```{r}
+for (i in 1:length(list_p2 )){
+  print(list_p2[[i]])
+}
+```
+
+```{r}
+for (i in 1:length(list_p2 )){
+  assign(paste0("p1_", c("a3","b3")[i]), list_p2 [[i]])
+}
+```
+
+# rkt
+
+
+```{r}
+# df_panc_tx_long <- df_panc_tx_long %>%
+#  mutate(ID = paste0(SEX, "_", AGE, "_", LOC, "_", TX, "_", CAT))
+```
+
+# add 
+
+```{r}
+# man kendall test on raw values
+
+
+df_panc_tx_rkt <- df_panc_tx_long  %>%
+  
+  mutate(YEAR = as.numeric(YEAR)) %>%
+  ungroup() %>%
+  nest(data = -c(SEX, AGE, LOC,TX, CAT) ) %>%
+  mutate(model = purrr::map(data,
+                            ~ mmky(.x$VALUE)),
+    tau = map_dbl(model, "Tau"),
+    p_value = map_dbl(model, "new P-value"),
+    slope = map_dbl(model, "Sen's slope")
+  )
+
+df_panc_tx_rkt
+
+```
+
+```{r}
+df_panc_tx_res <- df_panc_tx_rkt %>%
+  filter(SEX == "All") %>%
+  filter(LOC != "Total")
+
+df_panc_tx_res
+```
+
+
+```{r}
+get_exp <- function(x){
+
+  # if na return ""
+  
+  if(is.nan(x) | x > 0.001){
+    return("")
+  }
+  
+  else {
+    
+    p <- formatC(x, digits = 2, format = "e", flag = "#")
+    
+    ex <- p %>% str_extract("(?<=e).+") %>% str_remove_all("(?<=\\-)0+")
+    
+    return(ex)
+    }
+}
+
+get_expv <- Vectorize(get_exp)
+```
+
+```{r}
+get_num <- function(x){
+  
+  if (is.nan(x)){
+      return("NA")
+    }
+  
+  else if (x > 0.001) {
+    p <- formatC(x, digits = 2, format = "fg", flag = "#")
+    
+    return(p)
+  }
+  
+  else{
+    p <- formatC(x, digits = 1, format = "e", flag = "#")
+    
+    num <- p %>% str_extract(".+(?=e)")
+    
+    num <- str_c(num, "×10")
+      
+    return(num)
+  }
+}
+
+get_numv <- Vectorize(get_num)
+```
+
+```{r}
+symbol_p <- function(x){
+  if (is.na(x)){
+    return(NA)
+  }
+  
+  else if (x < 0.001){
+    return("***")
+  }
+  
+  else if (x < 0.01){
+    return("**")
+  }
+  
+  else if (x < 0.05) {
+    return("*")
+  }
+  
+  else {
+   return("")
+  }}
+
+symbol_pv <- Vectorize(symbol_p)
+
+```
+
+# table
+
+```{r}
+df_panc_tx_res <- df_panc_tx_res %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal"))) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic")))
+```
+
+
+
+```{r}
+df_panc_tx_res <- df_panc_tx_res %>%
+  mutate(tau_label = formatC(tau, digits = 2, format = "fg", flag = "#")) %>%
+ 
+  mutate(slope_label = case_when(abs(slope) < 10 ~ formatC(slope, digits = 2, format = "fg", flag = "#"),
+                           .default = round(slope) %>% scales::comma())) %>%
+ 
+  mutate(p_num = get_numv(p_value),
+         p_exp = get_expv(p_value)) %>%
+  
+  mutate(across(c(tau_label, slope_label, p_exp), ~ str_replace_all(.x, "-", "−"))) %>%
+  
+  mutate(p_label = purrr::map2(p_num, p_exp, function(x, y){
+    c(fmt_txt(x), fmt_txt(y, vert_align = "superscript"))}) ) %>%
+  
+  mutate(p_symbol = symbol_pv(p_value)) 
+
+df_panc_tx_res
+```
+
+
+# t1
+
+```{r}
+t1 <- df_panc_tx_res%>%
+    filter(SEX == "All") %>%
+  select(CAT, LOC, AGE, TX, SEX, tau_label, slope_label, p_label, p_symbol) %>%
+  arrange(LOC, AGE, TX)
+
+  
+```
+
+```{r}
+t1_a <- t1 %>%
+  filter(CAT == "SUM") %>%
+  mutate(ID = paste(LOC, "_", TX, "_", AGE, "_", SEX)) %>%
+  select(LOC, TX, AGE, SEX, ends_with("_label"), p_symbol, ID)
+  
+  
+t1_b <- t1 %>%
+  filter(CAT == "ADJ") %>%
+  mutate(ID = paste(LOC, "_", TX, "_", AGE, "_", SEX)) %>%
+  select(ends_with("_label"), p_symbol, ID)
+```
+
+```{r}
+t1_ab <- t1_a %>%
+  left_join(t1_b,
+            by = join_by(ID),
+            suffix = c("_sum", "_adj")) %>%
+  select(!ID) %>%
+  mutate(AGE = str_replace_all(AGE, "-", "–"))
+
+t1_ab
+```
+
+```{r}
+t1_ab <- t1_ab %>%
+  select(!SEX) %>%
+  arrange(LOC, TX, AGE)
+
+t1_ab
+```
+
+
+```{r}
+wb_workbook() %>%
+  wb_add_worksheet("Sheet1") %>%
+  wb_add_data(x = t1_ab) %>%
+  wb_save("../table/TableS6.xlsx")
+```
+
+
+# heatmap
+
+```{r}
+convert_strip <- function(x){
+  if (x == "SUM"){
+    return("**n**")
+  }
+  
+  else if (x == "ADJ"){
+    return("**n/10<sup>5</sup> people**")
+  }
+  
+  else {
+    return(x)
+  }
+}
+
+ convert_strip <- Vectorize(convert_strip)
+```
+
+```{r}
+p1_c <- df_panc_tx_res %>%
+  mutate(TX = factor(TX, levels = c("Robotic", "Laparoscopic","Open"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal"))) %>%
+  mutate(AGE = str_replace_all(AGE, "-", "–")) %>%
+  
+  mutate(tau_label = formatC(tau, digits = 2, format = "fg", flag = "#")) %>%
+  mutate(p_symbol = case_when(p_value < 0.001 ~ "***",
+                              p_value < 0.01 ~ "**",
+                              p_value < 0.05 ~ "*",
+                              .default = "")) %>% 
+  mutate(tau_label = paste0(tau_label, p_symbol)) %>%
+    mutate(CAT = factor(CAT, levels = c("SUM",
+                                      "ADJ"))) %>%
+  
+  ggplot(aes(AGE, TX, fill = tau))+
+  geom_tile(linewidth = 0.3, colour = "black")+
+  scale_fill_gradient2(low = "#74add1",
+                      mid  = "white",
+                      high = "#f46d43",
+                      limits = c(-1, 1),
+                      breaks = c(-1, -0.5, 0, 0.5, 1),
+                      labels = c("–1.0", "–0.5", "0.0", "0.5", "1.0"),
+                      name = expression(tau))+
+  geom_text(aes(
+                label = tau_label),
+            size = 2.8, colour = "black")+
+  facet_grid2(rows = vars(LOC),
+             cols = vars(CAT),
+            switch = "y",
+            labeller = labeller(CAT = convert_strip)
+               )+
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  guides(fill = guide_colourbar(ticks.colour = "black",
+                                ticks.linewidth = 0.2,
+                                frame.colour = "black",
+                                frame.linewidth = 0.2)) +
+  coord_cartesian(clip = "off")+
+  labs(tag = "c",
+       x = "Age",
+       y = "Location")+
+    theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+          strip.placement = "outside",
+          strip.background = element_blank(),
+          strip.text.x = element_markdown(size = 8, colour = "black", face = "bold",
+                                          margin = margin(1, 0, 1 , 0, "mm")),
+          strip.text.y = element_text(size = 8, colour = "black", face = "bold",
+                                      margin = margin(0, 2.75, 0, 0, "pt")),
+          axis.title = element_blank(),
+          axis.text = element_text(size = 8, colour = "black"),
+          axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          panel.border = element_rect(colour = "black", fill=NA, linewidth=0.3),
+          legend.title = element_text(size = 8, colour = "black", face = "bold"),
+          legend.text = element_text(size = 8, colour = "black"),
+          legend.key.height = unit(1, "lines"),
+          legend.key.width = unit(0.75, "lines"),
+          plot.margin = margin(0, 0, 0, 0, "mm"),
+          legend.margin = margin(0, 0, 0, 0, "mm"),
+          legend.box.margin = margin(0, 0, 0, 0, "mm"),
+          legend.box.spacing = unit(3, "mm"),
+          panel.spacing.x = unit(3, "mm"),
+          panel.spacing.y = unit(2, "mm"))
+
+
+p1_c 
+```
+
+# save 
+```{r}
+p1 <- p1_a1 + p1_a2 + p1_a3 +
+  p1_b1 + p1_b2 + p1_b3 +
+  patchwork::free(p1_c)+
+    plot_layout(ncol = 1,
+              heights = c(rep(1, 6), 1.5))
+
+```
+
+```{r}
+ggsave("../figure/Fig4.pdf",
+       p1,
+       width = 174, height = 234,
+       units = "mm")
+```

@@ -1,0 +1,933 @@
+---
+title: "Pancreatic cacner"
+output: html_document
+date: "2026-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+
+library(fpp3)
+library(anomalize)
+
+library(patchwork)
+library(ggtext)
+```
+
+
+```{r}
+# make df folder
+
+#dir.create("../df/long", showWarnings = TRUE, recursive = FALSE, #mode = "0777")
+```
+
+
+# covid
+
+```{r}
+rds_covid <- list.files("../rds/covid")
+```
+
+```{r}
+path_covid <- paste0("../rds/covid/", rds_covid)
+```
+
+
+```{r}
+list_covid <- purrr::map(path_covid, readRDS)
+```
+
+
+```{r}
+for (i in 1:length(list_covid )){
+  assign(rds_covid[i], list_covid[[i]])
+}
+```
+
+```{r}
+colnames(df_inpt)[2] <- "ALL" 
+```
+
+```{r}
+df_daily %>% filter(ALL == max(ALL))
+```
+
+```{r}
+df_soe1 <- tibble(xmin = as_date("2020-04-07"),
+                 xmax = as_date("2020-05-25"),
+                 ymin = -Inf,
+                 ymax = Inf)
+```
+
+```{r}
+df_soe2 <- tibble(xmin = as_date("2021-01-08"),
+                 xmax = as_date("2021-03-21"),
+                 ymin = -Inf,
+                 ymax = Inf)
+```
+
+```{r}
+df_soe3 <- tibble(xmin = as_date("2021-04-25"),
+                 xmax = as_date("2021-09-30"),
+                 ymin = -Inf,
+                 ymax = Inf)
+```
+
+
+```{r}
+# monthly
+
+p1_a1 <- df_daily %>%
+  mutate(ALL = ALL/10^3) %>%
+  ggplot(aes(YMD, ALL))+
+      geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(linewidth = 0.3, colour = "#7f7f7f")+
+     scale_x_date(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+    scale_y_continuous(limits = c(0, 3*10^2),
+                       breaks = seq(0, 3*10^2, 1*10^2),
+                       labels = scales::label_comma())+
+   theme_classic()+
+  labs(tag = "a",
+       title = "Daily new cases",
+       x = "Year",
+       y = "**Count (×10<sup>3</sup>)**")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        plot.title = element_text(size = 8, colour = "black", face = "bold", hjust = 0.5,
+                                  margin = margin(0, 0, 1, 0, "mm")),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold", hjust = 0.5),
+        axis.title.y = element_markdown(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black", hjust = 0.5),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = margin(0,0,0,0, unit = "mm"))
+
+p1_a1 
+
+```
+
+
+```{r}
+p1_a2 <- df_inpt %>%
+  mutate(ALL = ALL/10^6) %>%
+  ggplot(aes(YMD, ALL))+
+      geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(linewidth = 0.3, colour = "#7f7f7f")+
+   theme_classic()+
+  labs(#tag = "a",
+    title = "Daily cases under care",
+       x = "Year",
+       y = "**Count (×10<sup>6</sup>)**")+
+      scale_x_date(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(labels = scales::label_comma())+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        plot.title = element_text(size = 8, colour = "black", face = "bold", hjust = 0.5,
+                                  margin = margin(0, 0, 1, 0, "mm" )),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold", hjust = 0.5),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text = element_text(size = 8, colour = "black", hjust = 0.5),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = margin(0,0,0,0, unit = "mm"))
+
+p1_a2
+```
+
+
+# monthly endoscopy
+
+```{r}
+df_test_mon_reg <-  readRDS("../df/mon/df_mon_test_reg")
+
+df_test_mon_add <-  readRDS("../df/mon/df_mon_test_add")
+```
+
+```{r}
+df_surg_mon_reg <-  readRDS("../df/mon/df_mon_surg_reg")
+
+df_surg_mon_add <-  readRDS("../df/mon/df_mon_surg_add")
+```
+
+
+# pancreatic
+
+```{r}
+ df_surg_mon_reg  %>%  
+ filter(str_detect(ORGAN, "腹部") & 
+                    str_detect(PRO_name, "膵") &
+                    str_detect(PRO_name, "腫瘍")) %>%
+  count(PRO_name)
+```
+
+```{r}
+ df_surg_mon_reg  %>%  filter(CLASS_code %in% c("K700",
+                                                "K702",
+                                                "K703",
+                                                "K704")) %>%
+  count(PRO_name)
+```
+
+
+```{r}
+ df_surg_mon_reg  %>%
+  filter(str_detect(CLASS_code, "^K7")) %>%
+  count(CLASS_code, PRO_name) %>% View()
+```
+
+```{r}
+code_panc <- c("K700", paste0("K", 702:704)) %>%
+  paste0(collapse = "|")
+
+code_panc
+```
+```{r}
+df_surg_mon_reg  %>%  
+      filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  distinct(CLASS_code, .keep_all = TRUE)
+```
+
+
+```{r}
+df_panc <- df_surg_mon_reg  %>%  
+      filter(str_detect(CLASS_code, "K700|^K702|^K703|^K704")) %>%
+  mutate(TX = case_when(str_detect(PRO_name, "腹腔鏡") & !str_detect(PRO_name, "手術用支援機器") ~ "Laparoscopic",
+                        str_detect(PRO_name, "腹腔鏡") &  str_detect(PRO_name, "手術用支援機器") ~ "Robotic",
+                        .default = "Open") ) %>%
+  
+  
+  mutate(LOC = case_when(str_detect(PRO_name, "膵頭") ~ "Head",
+                         str_detect(PRO_name, "膵体尾部") ~ "Distal",
+                         str_detect(PRO_name, "全摘") ~ "Total",
+                         CLASS_code %in% c("K700", "K700-4") ~ "Middle",
+                         CLASS_code %in% c("K700-2", "K700-3") ~ "Partial")) %>%
+  mutate(TX = factor(TX, levels = c("Open", "Laparoscopic", "Robotic"))) %>%
+  mutate(LOC = factor(LOC, levels = c("Head", "Distal", "Total", "Middle", "Partial")))
+```
+
+```{r}
+df_panc %>%
+  filter(LOC == "Total") %>%
+  ggplot(aes(YMD, VALUE, group = LOC))+
+  geom_line(linewidth = 0.3)+
+  scale_y_continuous(limits = c(0, 60))+
+  theme_classic()
+  
+```
+
+```{r}
+df_panc %>%
+  filter(LOC == "Total") %>%
+  group_by(YEAR_str) %>%
+  summarise(SUM = sum(VALUE)) 
+```
+
+
+```{r}
+df_panc %>%
+  filter(LOC == "Total") %>%
+  group_by(YEAR_str) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  left_join(df_panc %>%
+               filter(LOC == "Total") %>%
+              distinct(TOTAL, YEAR_str),
+              by = join_by(YEAR_str))
+```
+
+
+```{r}
+df_panc %>% filter(is.na(LOC))
+
+df_panc %>% count(LOC)
+```
+
+
+# panc tx
+
+```{r}
+ts_panc_tx <- df_panc  %>%
+ group_by(YMD, TX) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  bind_rows(df_panc %>%
+              group_by(YMD) %>%
+              summarise(SUM = sum(VALUE)) %>%
+              mutate(TX = "All")) %>%
+  mutate(YM = yearmonth(YMD)) %>%
+  mutate(TX = factor(TX, levels = c("All",
+                                      "Open",
+                                      "Laparoscopic",
+                                    "Robotic"))) 
+```
+
+```{r}
+stl_panc_tx <- ts_panc_tx %>%
+  group_by(TX) %>%
+  time_decompose(target = SUM,
+                 method = "stl") %>%
+  anomalize(remainder,
+            method = "gesd")
+
+stl_panc_tx
+```
+
+```{r}
+stl_panc_tx  <- stl_panc_tx   %>%
+  mutate(YMD = rollforward(YMD)) %>%
+  mutate(season_adj = observed - season) 
+```
+
+```{r}
+stl_panc_tx  %>%
+  count(anomaly)
+```
+
+```{r}
+stl_panc_tx %>% ungroup() %>%
+  summarise(MIN_obs = min(observed),
+            MAX_obs = max(observed),
+            MIN_adj = min(season_adj),
+            MAX_adj = max(season_adj))
+```
+
+
+```{r}
+stl_panc_tx <-  stl_panc_tx %>%
+  mutate(y_point = case_when(anomaly == "Yes" ~ observed,
+                         .default = NA))
+```
+
+```{r}
+p1_f <- stl_panc_tx   %>%
+    filter(TX != "All") %>%
+  ggplot()+
+    geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(aes(YMD, observed, group = TX),
+            colour = "#7f7f7f",
+            linewidth = 0.3) +
+    geom_line(aes(YMD, trend, group = TX),
+            colour = "black",
+            linewidth = 0.4) +
+  geom_line(aes(YMD, season_adj, group = TX, colour = TX),
+            alpha = 0.8,
+            linewidth = 0.5) +
+  geom_point(aes(YMD, y_point, colour = TX),
+             fill = NA,
+             shape = 21, stroke = 0.75,
+             size = 1, alpha = 0.8,
+             show.legend = FALSE) +
+  scale_colour_manual(values = c(#  "#8c564b",
+                                 "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                      name = "Pancreatectomy",
+                      label = c(# "All",
+                                "Open",
+                                "Laparoscopic",
+                                "Robotic"))+
+  scale_x_yearmonth(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(limits = c(-40, 1500),
+                     breaks = seq(0, 1500, 500),
+                     labels = scales::label_comma())+
+    guides(colour = guide_legend(
+                                 override.aes = list(linewidth = 0.5,
+                                                   alpha = 1)))+
+  
+  labs(tag = "f",
+       x = "Year",
+       y = "**Count (n)**")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text.x = element_text(size = 8, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.justification= c(0, 0.5),
+        plot.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_f
+```
+
+
+# panc loc
+
+```{r}
+ts_panc_loc <- df_panc  %>%
+ group_by(YMD, LOC) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  filter(!LOC %in% c("Middle", "Partial") ) %>%
+  bind_rows(df_panc %>%
+              group_by(YMD) %>%
+              summarise(SUM = sum(VALUE)) %>%
+              mutate(LOC = "All")) %>%
+  mutate(YM = yearmonth(YMD)) %>%
+  mutate(LOC = factor(LOC, levels = c("All",
+                                      "Head",
+                                      "Distal",
+                                       "Total"))) 
+```
+
+```{r}
+stl_panc_loc <- ts_panc_loc %>%
+  group_by(LOC) %>%
+  time_decompose(target = SUM,
+                 method = "stl") %>%
+  anomalize(remainder,
+            method = "gesd")
+
+stl_panc_loc
+```
+
+```{r}
+stl_panc_loc  <- stl_panc_loc   %>%
+  mutate(YMD = rollforward(YMD)) %>%
+  mutate(season_adj = observed - season) 
+```
+
+```{r}
+stl_panc_loc  %>%
+  count(anomaly)
+```
+
+```{r}
+stl_panc_loc %>% ungroup() %>%
+  summarise(MIN_obs = min(observed),
+            MAX_obs = max(observed),
+            MIN_adj = min(season_adj),
+            MAX_adj = max(season_adj))
+```
+
+```{r}
+stl_panc_loc <- stl_panc_loc  %>%
+  mutate(y_point = case_when(anomaly == "Yes" ~ observed,
+                         .default = NA))
+```
+
+```{r}
+stl_panc_loc %>%
+  filter(anomaly =="Yes")
+```
+
+
+
+```{r}
+p1_c <- stl_panc_loc    %>%
+  ggplot()+
+    geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(aes(YMD, observed, group = LOC),
+            colour = "#7f7f7f",
+            linewidth = 0.3) +
+    geom_line(aes(YMD, trend, group = LOC),
+            colour = "black",
+            linewidth = 0.4) +
+  geom_line(aes(YMD, season_adj, group = LOC, colour = LOC),
+            alpha = 0.8,
+            linewidth = 0.5) +
+     geom_point(aes(YMD, y_point, colour = LOC),
+             fill = NA,
+             shape = 21, stroke = 0.75,
+             size = 1, alpha = 0.8,
+             show.legend = FALSE) +
+  scale_colour_manual(values = c( "#8c564b",
+                                 "#1f77b4",
+                                 "#d62728",
+                                 "#bcbd22"),
+                      name = "Pancreatectomy",
+                      label = c("All",
+                                "Head",
+                                "Distal",
+                                "Total"))+
+  scale_x_yearmonth(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(limits = c(0, 2000),
+                     breaks = seq(0, 2000, 500),
+                     labels = scales::label_comma())+
+    guides(colour = guide_legend(
+                                 override.aes = list(linewidth = 0.5,
+                                                   alpha = 1)))+
+  
+  labs(tag = "c",
+       x = "Year",
+       y = "**Count (n)**")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text.x = element_text(size = 8, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.justification = c(1, 0.5),
+        plot.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_c
+```
+
+# head disatal
+
+```{r}
+ts_panc_hd <- df_panc  %>%
+ group_by(YMD, LOC, TX) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  filter(!LOC %in% c("Middle", "Partial") ) %>%
+  mutate(YM = yearmonth(YMD)) %>%
+  mutate(LOC = factor(LOC, levels = c("Head",
+                                      "Distal",
+                                       "Total"))) 
+
+ts_panc_hd 
+```
+
+```{r}
+stl_panc_hd <- ts_panc_hd %>%
+  group_by(TX, LOC) %>%
+  time_decompose(target = SUM,
+                 method = "stl") %>%
+  anomalize(remainder,
+            method = "gesd")
+
+stl_panc_hd
+```
+
+```{r}
+stl_panc_h <- stl_panc_hd   %>%
+  filter(LOC == "Head") %>%
+  mutate(YMD = rollforward(YMD)) %>%
+  mutate(season_adj = observed - season) 
+```
+
+```{r}
+stl_panc_h  %>%
+  count(anomaly)
+```
+
+```{r}
+stl_panc_h %>% ungroup() %>%
+  summarise(MIN_obs = min(observed),
+            MAX_obs = max(observed),
+            MIN_adj = min(season_adj),
+            MAX_adj = max(season_adj))
+```
+
+
+```{r}
+stl_panc_h <- stl_panc_h %>%
+  mutate(y_point = case_when(anomaly == "Yes" ~ observed,
+                         .default = NA))
+```
+
+
+```{r}
+p1_d <- stl_panc_h   %>%
+  ggplot()+
+    geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(aes(YMD, observed, group = TX),
+            colour = "#7f7f7f",
+            linewidth = 0.3) +
+    geom_line(aes(YMD, trend, group = TX),
+            colour = "black",
+            linewidth = 0.4) +
+  geom_line(aes(YMD, season_adj, group = TX, colour = TX),
+            alpha = 0.8,
+            linewidth = 0.5) +
+    geom_point(aes(YMD, y_point, colour = TX),
+             fill = NA,
+             shape = 21, stroke = 0.75,
+             size = 1, alpha = 0.8,
+             show.legend = FALSE) +
+  scale_colour_manual(values = c("#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                      name = "Pancreatic\nhead")+
+  scale_x_yearmonth(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(limits = c(-20, 1000),
+                     breaks = seq(0, 1000, 250),
+                     labels = scales::label_comma())+
+    guides(colour = guide_legend(
+                                 override.aes = list(linewidth = 0.5,
+                                                   alpha = 1)))+
+  
+  labs(tag = "d",
+       x = "Year",
+       y = "**Count (n)**")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+       axis.title.x = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text.x = element_text(size = 8, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.justification = c(1, 0.5),
+        plot.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_d
+```
+
+```{r}
+stl_panc_d <- stl_panc_hd   %>%
+  filter(LOC == "Distal") %>%
+  mutate(YMD = rollforward(YMD)) %>%
+  mutate(season_adj = observed - season) 
+```
+
+```{r}
+stl_panc_d  %>%
+  count(anomaly)
+```
+
+```{r}
+stl_panc_d %>% ungroup() %>%
+  summarise(MIN_obs = min(observed),
+            MAX_obs = max(observed),
+            MIN_adj = min(season_adj),
+            MAX_adj = max(season_adj))
+```
+
+```{r}
+stl_panc_d   <- stl_panc_d  %>%
+  mutate(y_point = case_when(anomaly == "Yes" ~ observed,
+                         .default = NA))
+```
+
+
+```{r}
+p1_e <- stl_panc_d   %>%
+  ggplot()+
+    geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(aes(YMD, observed, group = TX),
+            colour = "#7f7f7f",
+            linewidth = 0.3) +
+    geom_line(aes(YMD, trend, group = TX),
+            colour = "black",
+            linewidth = 0.4) +
+  geom_line(aes(YMD, season_adj, group = TX, colour = TX),
+            alpha = 0.8,
+            linewidth = 0.5) +
+    geom_point(aes(YMD, y_point, colour = TX),
+             fill = NA,
+             shape = 21, stroke = 0.75,
+             size = 1, alpha = 0.8,
+             show.legend = FALSE) +
+  scale_colour_manual(values = c(
+                                 "#2ca02c",
+                                 "#ff7f0e",
+                                 "#9467bd"),
+                      name = "Distal\npancreas")+
+  scale_x_yearmonth(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(limits = c(-20, 400),
+                     breaks = seq(0, 400, 100))+
+    guides(colour = guide_legend(
+                                 override.aes = list(linewidth = 0.5,
+                                                   alpha = 1)))+
+  
+  labs(tag = "e",
+       x = "Year",
+       y = "**Count (n)**")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text.x = element_text(size = 8, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.justification = c(1, 0.5),
+        plot.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_e
+```
+
+# Tumour markers
+
+```{r}
+df_test_mon_reg %>%
+  mutate(PRO_name = stringi::stri_trans_general(PRO_name, "Fullwidth-Halfwidth")) %>%
+  filter(str_detect(PRO_name, "SPan|DUPAN"))　%>%
+  count(PRO_code, PRO_name)
+```
+
+
+```{r}
+# 160036910	DUPAN-2	120		
+# 160117010	SPan-1
+
+code_tm <- c("160036910",
+               "160117010")
+
+
+df_panc_tm <- df_test_mon_reg %>%
+   mutate(PRO_name = stringi::stri_trans_general(PRO_name, "Fullwidth-Halfwidth")) %>%
+  filter(PRO_code %in% code_tm) %>%
+  mutate(TX = PRO_name)
+
+```
+
+```{r}
+ts_panc_tm <- df_panc_tm %>%
+  group_by(YMD, TX) %>%
+  summarise(SUM = sum(VALUE)) %>%
+  mutate(YM = yearmonth(YMD))
+
+ts_panc_tm
+```
+
+```{r}
+stl_panc_tm <- ts_panc_tm %>%
+  group_by(TX) %>%
+  time_decompose(target = SUM,
+                 method = "stl") %>%
+  anomalize(remainder,
+            method = "gesd")
+
+stl_panc_tm
+```
+
+```{r}
+stl_panc_tm <- stl_panc_tm   %>%
+  mutate(YMD = rollforward(YMD)) %>%
+  mutate(season_adj = observed - season) 
+```
+
+```{r}
+stl_panc_tm  %>%
+  count(anomaly)
+```
+
+```{r}
+stl_panc_tm %>% ungroup() %>%
+  summarise(MIN_obs = min(observed),
+            MAX_obs = max(observed),
+            MIN_adj = min(season_adj),
+            MAX_adj = max(season_adj))
+```
+
+
+```{r}
+stl_panc_tm <- stl_panc_tm %>%
+  mutate(y_point = case_when(anomaly == "Yes" ~ observed,
+                         .default = NA))
+```
+
+
+```{r}
+p1_b <- stl_panc_tm  %>%
+  ggplot()+
+    geom_rect(data = df_soe1,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe2,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+      geom_rect(data = df_soe3,
+            aes(xmin = xmin,  xmax = xmax,
+                ymin = ymin, ymax = ymax),
+            fill = "#d9d9d9",
+            inherit.aes = FALSE)+
+  geom_line(aes(YMD, observed, group = TX),
+            colour = "#7f7f7f",
+            linewidth = 0.3) +
+    geom_line(aes(YMD, trend, group = TX),
+            colour = "black",
+            linewidth = 0.4) +
+  geom_line(aes(YMD, season_adj, group = TX, colour = TX),
+            alpha = 0.8,
+            linewidth = 0.5) +
+    geom_point(aes(YMD, y_point, colour = TX),
+             fill = NA,
+             shape = 21, stroke = 0.75,
+             size = 1, alpha = 0.8,
+             show.legend = FALSE) +
+    scale_colour_manual(values = c("#e377c2", "#17becf"),
+                      name = "Test")+
+  scale_x_yearmonth(date_labels = "%Y",
+               limits = c(as_date("2019-01-01"), as_date("2025-01-01") ),
+               breaks = c(seq(as_date("2019-01-01"), as_date("2025-01-01"), by = "12 month")))+
+  scale_y_continuous(limits = c(0, 25000),
+                     breaks = seq(0, 25000, 5000),
+                     labels = scales::label_comma())+
+    guides(colour = guide_legend(
+                                 override.aes = list(linewidth = 0.5,
+                                                   alpha = 1)))+
+  
+  labs(tag = "b",
+       x = "Year",
+       y = "**Count (n)**")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face = "bold"),
+        axis.title.x = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title.y = element_markdown(size = 8, colour = "black"),
+        axis.text.x = element_text(size = 8, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "bottom",
+        legend.justification = c(0, 0.5),
+        plot.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.key.spacing.y = unit(0, "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"))
+
+p1_b 
+```
+
+```{r}
+p1 <- p1_a1 + p1_a2 + 
+  p1_b + p1_c + 
+  p1_d + p1_e + 
+  p1_f + plot_spacer() +
+  plot_layout(nrow = 4, ncol = 2,
+              heights = c(3, 4, 4, 4),
+              widths = c(1, 1)) &
+  theme(
+        legend.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.margin = margin(0, 0, 0, 0, unit = "mm"),
+        legend.box.spacing = unit(0, "mm"),
+        axis.title.y = element_markdown(size = 8, colour = "black", vjust = 0))
+
+p1
+```
+
+
+```{r}
+ggsave("../figure/Fig2.pdf", p1,
+       width = 174, height = 234, units = "mm",
+       device = cairo_pdf)
+```

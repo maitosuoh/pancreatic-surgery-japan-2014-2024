@@ -1,0 +1,183 @@
+---
+title: "Pancreatic cancer"
+output: html_document
+date: "2026-04-06"
+---
+
+
+```{r}
+library(tidyverse)
+library(broom)
+
+library(openxlsx)
+library(openxlsx2)
+library(readxl)
+
+library(fpp3)
+library(broom)
+library(anomalize)
+library(modifiedmk)
+library(rkt)
+
+library(sf)
+library(maps)
+library(rnaturalearth)
+
+library(stringi)
+library(ggtext)
+library(ggrepel)
+library(scales)
+
+library(cowplot)
+library(patchwork)
+
+library(ggh4x)
+
+library(report)
+```
+
+```{r}
+report::report(sessionInfo())
+```
+
+```{r}
+df_pack <- report::cite_packages() %>% as_tibble() %>%
+  mutate(value = as.character(value))
+```
+
+```{r}
+df_pack_long <- df_pack %>%
+  separate_longer_delim(value, delim = "- ") %>%
+  mutate(value = str_trim(value, side = "both")) %>%
+  distinct(value) %>%
+  filter(value != "")
+```
+
+
+```{r}
+df_pack_long <- df_pack_long %>%
+  mutate(Year = str_extract(value, "(?<=\\()[:digit:]+(?=\\))")) %>%
+  mutate(Version = str_extract(value, "(?<=R package version )[^\\,]+(?=\\,)")) %>%
+  mutate(Package = str_extract(value, "(?<=\\.\\s\\_)[^\\:]+(?=\\:)")) %>%
+  mutate(Source = str_extract(value, "(?<=\\<)http[^\\>]+(?=\\>)"))
+
+df_pack_long 
+```
+
+```{r}
+df_pack_long %>% View()
+```
+
+
+```{r}
+df_pack_long %>% filter(is.na(Package))
+```
+
+
+```{r}
+df_pack_long <- df_pack_long %>%
+  mutate(Package = case_when(str_detect(value, "lubridate") ~ "lubridate",
+                             str_detect(value, "Reporting") ~ "report",
+                             str_detect(value, "temporal") ~ "tsibble",
+                             str_detect(value, "the tidyverse") ~ "tidyverse",
+                             str_detect(value, "Spatial Data Science") ~ "sf",
+                             str_detect(value, "stringi") ~ "stringi",
+                             str_detect(value,  "Complex heatmaps") ~ "ComplexHeatmap",
+                             .default = Package))
+```
+
+```{r}
+df_pack_long %>% filter(is.na(Package)) %>% View()
+```
+
+
+
+```{r}
+df_pack_long %>% filter(is.na(Version)) %>% View()
+```
+
+```{r}
+df_pack_long <- df_pack_long %>%
+  mutate(Version = case_when(Package == "lubridate" ~ "1.9.5",
+                             Package == "report" ~ "0.6.4",
+                             Package == "sf" ~ "1.1-2",
+                             Package == "tsibble" ~ "1.2.0",
+                             Package == "ggplot2" ~ "4.0.3",
+                             Package == "tidyverse" ~ "2.0.0",
+                             Package == "R" ~ "4.6.1",
+                             Package == "stringi" ~ "1.8.7",
+                             Package == "ComplexHeatmap" ~ "2.28.0",
+                             .default = Version))
+```
+
+```{r}
+df_pack_long %>% filter(is.na(Year)) %>% View()
+```
+
+
+```{r}
+df_pack_long <- df_pack_long %>%
+  mutate(Version = case_when(str_detect(value, "viridis package version 0.6.5") ~ "0.6.5",
+                             .default = Version)) %>%
+  mutate(Year = case_when(Package == "viridis" ~ "2024",
+                          .default = Year)) %>%
+  filter(!is.na(Version))
+
+
+```
+
+
+```{r}
+df_pack_long %>% View()
+```
+
+
+
+```{r}
+RStudio.Version()$citation
+```
+
+```{r}
+df_pack_long <- df_pack_long %>%
+  bind_rows(tibble(Package = "RStudio",
+                   Year = "2026",
+                   Version = "2026.07.1+147",
+                   Source = "http://www.posit.co/"))
+```
+
+```{r}
+df_pack_long 
+```
+
+
+```{r}
+df_software <-df_pack_long %>%
+  filter(Package %in% c("R", "RStudio")) %>%
+  arrange(Package)
+
+df_software 
+```
+
+
+```{r}
+df_package <- df_pack_long %>%
+  filter(!Package %in% c("R", "RStudio")) %>%
+  mutate(LC = str_to_lower(Package)) %>%
+  arrange(LC) %>%
+  select(!LC)
+```
+
+```{r}
+df_software %>%
+  bind_rows(df_package) %>%
+  select(Package, Version, Source) %>% View()
+```
+
+
+```{r}
+df_software %>%
+  bind_rows(df_package) %>%
+  select(Package, Version, Source) %>%
+  write.xlsx("../table/TableS1.xlsx")
+```
+
